@@ -1,3 +1,123 @@
 <!doctype html>
-<html><head><meta charset="utf-8"><title>BLE Scan v1.4.2</title></head>
-<body><h1>BLE Scan – Fahrmodus v1.4.2 (Placeholder)</h1></body></html>
+<html lang="de">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; img-src 'self' data: https://*.tile.openstreetmap.org; style-src 'self' https://unpkg.com 'unsafe-inline'; script-src 'self' https://unpkg.com 'unsafe-inline'; connect-src 'self' blob:;"/>
+  <title>BLE Scan – Fahrmodus</title>
+  <meta name="app-version" content="1.4.2"/>
+  <link rel="manifest" href="./manifest.json" />
+  <link rel="stylesheet" href="./styles.css" />
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"
+        integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY=" crossorigin="" />
+</head>
+<body>
+  <header>
+    <h1>BLE Scan <span class="badge" id="modeBadge">Normalmodus</span> <small class="muted">v1.4.2</small></h1>
+    <span id="jsProbe" class="badge muted">JS lädt…</span>
+    <script>
+      try {
+        document.getElementById('jsProbe').textContent = 'JS geladen';
+        window.addEventListener('error', function(e){
+          var el = document.getElementById('err'); 
+          if(!el){ return; }
+          el.textContent = 'Script-Fehler: ' + (e.message || e.error);
+          el.classList.remove('hidden');
+        });
+      } catch(e) {}
+    </script>
+    <div id="status">Preflight ausstehend…</div>
+    <div class="stats">
+      <div><span id="uniqueCount">0</span><label>Einzigartige Geräte</label></div>
+      <div><span id="packetCount">0</span><label>Pakete gesamt</label></div>
+      <div><span id="ratePerMin">0</span><label>Rate/min</label></div>
+      <div><span id="lastPkt">–</span><label>Letztes Paket</label></div>
+    </div>
+    <div id="driveTicker" class="ticker hidden">Fahrmodus aktiv <span id="dots">•</span> <span id="hb" class="muted" style="margin-left:.5rem"></span></div>
+  </header>
+
+  <section class="controls">
+    <button id="btnPreflight">Preflight prüfen</button>
+    <button id="btnStart" title="Startet den BLE-Scan">Scan starten</button>
+    <button id="btnStop" disabled>Scan stoppen</button>
+    <button id="btnResync" title="Scan neu synchronisieren">Resync</button>
+    <label><input type="checkbox" id="toggleSW" checked /> SW aktiv</label>
+    <label class="switch">
+      <input type="checkbox" id="toggleDrive" />
+      <span>Fahrmodus (WakeLock)</span>
+    </label>
+    <label><input type="checkbox" id="toggleCluster" checked/> Cluster (5 s)</label>
+    <label title="Pfadverlust-Exponent, typ. 1.6–2.2 outdoor, 2–3 indoor">n=<input id="pathLossN" type="number" step="0.1" min="1.0" max="4.0" value="2.0" style="width:5rem"/></label>
+  </section>
+
+  <section class="filters">
+    <input id="fName" placeholder="Gerätename enthält…" />
+    <input id="fRssiMin" type="number" placeholder="RSSI min (dBm, Standard: -80)" />
+    <input id="fRssiMax" type="number" placeholder="RSSI max (dBm)" />
+    <input id="fFrom" type="datetime-local" />
+    <input id="fTo" type="datetime-local" />
+    <label><input type="checkbox" id="fApple"/> Apple/Tracker</label>
+    <label><input type="checkbox" id="fFastPair"/> Fast Pair</label>
+    <label><input type="checkbox" id="fIndustrie"/> Industrie/FCF1</label>
+    <button id="btnApplyFilters">Filter anwenden</button>
+    <button id="btnClearFilters">Filter löschen</button>
+  </section>
+
+  <section id="preflightPanel" class="panel">
+    <h2>Preflight-Check</h2>
+    <div id="pfList"></div>
+    <div class="hint">
+      Hinweise: Chrome/Android, HTTPS, Standort-Freigabe, „In der Nähe“-Berechtigung. 
+      In Chrome <code>chrome://flags</code> → <b>Experimental Web Platform features</b> aktivieren (für <code>requestLEScan</code>).
+    </div>
+  </section>
+
+  <section class="layout">
+    <div class="panel">
+      <h2>Letzte Scans</h2>
+      <div id="err" class="error hidden"></div>
+      <table id="tbl">
+        <thead>
+          <tr>
+            <th>Zeit</th>
+            <th>Gerät</th>
+            <th>UUIDs</th>
+            <th>RSSI</th>
+            <th>txP</th>
+            <th>Dist (m)</th>
+            <th>Lat</th>
+            <th>Lon</th>
+            <th>cnt</th>
+          </tr>
+        </thead>
+        <tbody id="tblBody"></tbody>
+      </table>
+      <div id="hiddenHint" class="hint"></div>
+    </div>
+    <div class="panel">
+      <h2>Karte</h2>
+      <div id="map"></div>
+    </div>
+  </section>
+
+  <section class="export">
+    <button id="btnExportJSON">Export JSON (alle)</button>
+    <button id="btnExportCSV">Export CSV (alle)</button>
+    <button id="btnExportCSVFiltered">Export CSV (gefiltert)</button>
+    <button id="btnExportCSVCluster">Export CSV (Cluster 5s)</button>
+  </section>
+
+  <footer>
+    <small>Offline-fähig (PWA). BLE-Scan nur in unterstützten Browsern und im Vordergrund. WakeLock hält das Display aktiv.</small>
+  </footer>
+
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"
+          integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo=" crossorigin=""></script>
+  <script type="module" src="./js/main.js?v=1.4.2"></script>
+</body>
+</html>
+
+  <section class="debug panel">
+    <h2>Debug-Rohdaten (letzte 10)</h2>
+    <div id="dbg"></div>
+  </section>
