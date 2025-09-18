@@ -136,7 +136,7 @@ el.btnPreflight.addEventListener('click', async ()=>{
 el.btnStart.addEventListener('click', async ()=>{
   try{
     await DB.init();
-    await MAP.init();
+    // MAP.init() wird bereits beim Start ausgeführt; nicht erneut initialisieren
     await GEO.init();
     SES.init();
     await BLE.startScan();

@@ -1,13 +1,16 @@
 let map, markersLayer;
+let initialized = false;
 
 export async function init(){
+  if(initialized && map){ return; }
   map = L.map('map');
   L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
     maxZoom: 19,
     attribution: '&copy; OpenStreetMap'
   }).addTo(map);
   markersLayer = L.layerGroup().addTo(map);
-  map.setView([50.71, 12.49], 12);
+  map.setView([50.71, 12.49], 12); // Start: Zwickau Umgebung
+  initialized = true;
 }
 
 export function update(rows){
