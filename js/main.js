@@ -190,6 +190,15 @@ BLE.onAdvertisement(async (ad) => {
 });
 
 el.btnPreflight.addEventListener('click', async ()=>{
+  try{
+    const report = await diagnostics();
+    const okScan = report.find(r=>r.name==='requestLEScan')?.ok;
+    el.btnStart.disabled = !okScan;
+    if(!okScan){ el.btnStart.title = 'Browser unterstützt requestLEScan nicht. Siehe Preflight-Hinweise.'; }
+    const ok = await preflight();
+    el.status.textContent = ok ? 'Preflight OK' : 'Preflight: eingeschränkt';
+  }catch(e){ console.error(e); showError('Preflight-Fehler: '+e.message); }
+
   const report = await diagnostics();
   const okScan = report.find(r=>r.name==='requestLEScan')?.ok;
   el.btnStart.disabled = !okScan;
@@ -319,12 +328,16 @@ async function releaseWakeLock(){
 }
 
 (async function(){
+  try{
   resetRate();
   await preflight();
   await DB.init();
   try{ await MAP.init(); }catch(e){ console.error(e); showError('Karte konnte nicht initialisiert werden. Prüfe CSP/Netzwerk.'); }
   await GEO.init();
   SES.init();
-  el.status.textContent = 'Bereit.';
+  await diagnostics();
+  const ok = await preflight();
+  el.status.textContent = ok ? 'Bereit.' : 'Eingeschränkt, siehe Preflight.';
   refreshUI();
+  }catch(e){ console.error(e); showError('Initialisierungsfehler: '+e.message); }
 })();
