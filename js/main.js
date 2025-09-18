@@ -9,6 +9,33 @@ import * as PRO from './profiler.js';
 import * as SES from './session.js';
 import * as DEC from './parse.js';
 
+
+async function diagnostics(){
+  const pf = [];
+  const add = (name, ok, info='') => {
+    pf.push({name, ok, info});
+  };
+  add('SecureContext (HTTPS)', window.isSecureContext === true, location.protocol);
+  const ua = navigator.userAgent;
+  add('Browser', true, ua);
+  add('navigator.bluetooth', !!navigator.bluetooth);
+  add('requestLEScan', !!(navigator.bluetooth && navigator.bluetooth.requestLEScan));
+  add('Geolocation', !!navigator.geolocation);
+  add('WakeLock', !!(navigator.wakeLock && navigator.wakeLock.request));
+  try{
+    const perms = navigator.permissions;
+    if(perms && perms.query){
+      try{ const g = await perms.query({name:'geolocation'}); add('Perm: Geolocation', g.state !== 'denied', g.state); }catch{}
+      try{ const n = await perms.query({name:'notifications'}); add('Perm: Notifications', n.state !== 'denied', n.state); }catch{}
+    }
+  }catch{}
+  const el = document.getElementById('pfList');
+  if(el){
+    el.innerHTML = '<ul>' + pf.map(p=>`<li>${p.ok?'✅':'❌'} <b>${p.name}</b> <small class="muted">${p.info||''}</small></li>`).join('') + '</ul>';
+  }
+  return pf;
+}
+
 const appState = {
   driveMode: false,
   cluster: true,
@@ -86,6 +113,8 @@ function estDistance(rssi, txPower, n){
   return Number.isFinite(clamped) ? Number(clamped.toFixed(2)) : null;
 }
 
+function showError(msg){ const e = document.getElementById('err'); if(!e) return; e.textContent = msg||''; e.classList.toggle('hidden', !msg); }
+
 function renderTable(records){
   const maxRows = 5;
   el.tblBody.innerHTML = '';
@@ -161,6 +190,10 @@ BLE.onAdvertisement(async (ad) => {
 });
 
 el.btnPreflight.addEventListener('click', async ()=>{
+  const report = await diagnostics();
+  const okScan = report.find(r=>r.name==='requestLEScan')?.ok;
+  el.btnStart.disabled = !okScan;
+  if(!okScan){ el.btnStart.title = 'Browser unterstützt requestLEScan nicht. Siehe Preflight-Hinweise.'; }
   const ok = await preflight();
   el.status.textContent = ok ? 'Preflight OK' : 'Preflight: eingeschränkt';
 });
@@ -175,7 +208,7 @@ el.btnStart.addEventListener('click', async ()=>{
     el.status.textContent = 'Scan läuft…';
   }catch(e){
     console.error(e);
-    el.status.textContent = 'Scan konnte nicht gestartet werden: ' + e.message;
+    el.status.textContent = 'Scan konnte nicht gestartet werden: ' + e.message; showError('Scan-Start fehlgeschlagen: '+e.message+' — Prüfe Browser/Flags/Berechtigungen.');
   }
 });
 
@@ -289,7 +322,7 @@ async function releaseWakeLock(){
   resetRate();
   await preflight();
   await DB.init();
-  await MAP.init();
+  try{ await MAP.init(); }catch(e){ console.error(e); showError('Karte konnte nicht initialisiert werden. Prüfe CSP/Netzwerk.'); }
   await GEO.init();
   SES.init();
   el.status.textContent = 'Bereit.';
