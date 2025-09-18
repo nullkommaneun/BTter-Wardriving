@@ -12,7 +12,7 @@ import * as DEC from './parse.js';
 // --- Diagnostics ---
 async function diagnostics(){
   const pf = [];
-  const add = (name, ok, info='') => pf.push({name, ok, info});
+  const add = (name, ok, info='') => pf.push({name, ok, info}); }
   add('SecureContext (HTTPS)', window.isSecureContext === true, location.protocol);
   const ua = navigator.userAgent;
   add('Browser', true, ua);
@@ -145,11 +145,23 @@ async function getFiltered(){
   return rows;
 }
 
+
+let lastMapUpdate = 0;
+function updateMapThrottled(rows){
+  const now = Date.now();
+  if(!appState.driveMode){
+    MAP.update(rows); lastMapUpdate = now; return;
+  }
+  if(now - lastMapUpdate > 3000){
+    MAP.update(rows); lastMapUpdate = now;
+  }
+}
+
 async function refreshUI(){
   const rows = await getFiltered();
   const clustered = appState.cluster ? CLU.cluster5s(rows, appState.pathLossN) : rows;
   renderTable(clustered);
-  if(!appState.driveMode){ MAP.update(clustered); }
+  updateMapThrottled(clustered);
 }
 
 // --- Ingest ---
@@ -171,8 +183,10 @@ async function ingest(evt){
     ...DEC.decode(evt.manufacturerData, evt.serviceData)
   };
   base.distanceM = estDistance(base.rssi, base.txPower, appState.pathLossN);
-  const prof = PRO.profileDevice(base.deviceName, base.serviceUUIDs);
-  const record = { ...base, ...prof };
+  let prof = PRO.profileDevice(base.deviceName, base.serviceUUIDs);
+  let record = { ...base, ...prof };
+  const fb = PRO.fallbackProfileByDecoded(record);
+  record = { ...record, ...fb };
 
   if(record.timestamp && Array.isArray(record.serviceUUIDs) && Number.isInteger(record.rssi)){
     await DB.addRecord(record);
@@ -242,7 +256,7 @@ el.toggleDrive.addEventListener('change', async (e)=>{
 
 el.toggleCluster.addEventListener('change', (e)=>{ appState.cluster = !!e.target.checked; refreshUI(); });
 
-el.btnApplyFilters.addEventListener('click', ()=>{
+if(el.btnApplyFilters){ el.btnApplyFilters.addEventListener('click', ()=>{
   appState.filters = {
     name: el.fName?.value.trim() || '',
     rssiMin: el.fRssiMin?.value !== '' ? Number(el.fRssiMin.value) : appState.filters.rssiMin,
@@ -252,9 +266,9 @@ el.btnApplyFilters.addEventListener('click', ()=>{
   };
   appState.pathLossN = parseFloat(el.pathLossN?.value) || 2.0;
   refreshUI();
-});
+}); }
 
-el.btnClearFilters.addEventListener('click', ()=>{
+if(el.btnClearFilters){ el.btnClearFilters.addEventListener('click', ()=>{
   if(el.fName) el.fName.value='';
   if(el.fRssiMin) el.fRssiMin.value='';
   if(el.fRssiMax) el.fRssiMax.value='';

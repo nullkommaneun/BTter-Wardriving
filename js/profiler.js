@@ -29,3 +29,20 @@ export function profileDevice(name, uuids){
   for(const r of rules){ if(r.test.test(name)) return { category:r.category, vendor:r.vendor, icon:r.icon }; }
   return { category:'', vendor:'', icon:'' };
 }
+
+
+// Fallback by decoded beacon type or manufacturer company ID
+export function fallbackProfileByDecoded(record){
+  if(record.beaconType === 'iBeacon'){
+    return { category: record.category || 'Tracker', vendor: record.vendor || 'Apple/Beacon', icon: record.icon || '🧭' };
+  }
+  if(record.beaconType === 'Eddystone-URL' || record.beaconType === 'Eddystone-TLM'){
+    return { category: record.category || 'Beacon', vendor: record.vendor || 'Eddystone', icon: record.icon || '🔗' };
+  }
+  // Manufacturer Company IDs
+  const mfg = record.manufacturerData || {};
+  if(mfg['0x004c']){ // Apple
+    return { category: record.category || 'Tracker', vendor: record.vendor || 'Apple', icon: record.icon || '🧭' };
+  }
+  return { category: record.category || '', vendor: record.vendor || '', icon: record.icon || '📡' };
+}
