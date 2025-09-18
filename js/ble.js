@@ -27,7 +27,8 @@ export async function stopScan(){
 function onAdv(ev){
   const name = ev.device?.name || ev.name || null;
   const uuids = Array.from(new Set([...(ev.uuids||[]), ...(ev.serviceUuids||[]), ...(ev.serviceUUIDs||[])]));
-  const rssi = Number.isFinite(ev.rssi) ? Math.trunc(ev.rssi) : (Number.isFinite(ev.txPower) ? Math.trunc(ev.txPower) : null);
-  const ad = { deviceName: name, serviceUUIDs: uuids, rssi };
+  const rssi = Number.isFinite(ev.rssi) ? Math.trunc(ev.rssi) : null;
+  const txPower = Number.isFinite(ev.txPower) ? Math.trunc(ev.txPower) : null;
+  const ad = { deviceName: name, serviceUUIDs: uuids, rssi, txPower, manufacturerData: ev.manufacturerData, serviceData: ev.serviceData };
   if(!pausedRender && typeof advHandler === 'function') advHandler(ad);
 }

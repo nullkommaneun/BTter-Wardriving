@@ -9,7 +9,7 @@ export async function init(){
     attribution: '&copy; OpenStreetMap'
   }).addTo(map);
   markersLayer = L.layerGroup().addTo(map);
-  map.setView([50.71, 12.49], 12); // Start: Zwickau Umgebung
+  map.setView([50.71, 12.49], 12); // Start
   initialized = true;
 }
 
@@ -22,7 +22,7 @@ export function update(rows){
       const name = (r.icon||'') + ' ' + (r.deviceName||'');
       const uu = (r.serviceUUIDs||[]).join(';');
       const cnt = r.count ?? '';
-      const html = `<b>${name}</b><br/>${new Date(r.timestamp).toLocaleString()}<br/>RSSI: ${r.rssi}<br/>UUIDs: ${uu}<br/>Count(5s): ${cnt}`;
+      const html = `<b>${name}</b><br/>${new Date(r.timestamp).toLocaleString()}<br/>RSSI: ${r.rssi} txP:${r.txPower ?? ''}<br/>UUIDs: ${uu}<br/>Count(5s): ${cnt}`;
       m.bindPopup(html);
       markersLayer.addLayer(m);
     }

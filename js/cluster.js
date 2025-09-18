@@ -13,6 +13,7 @@ export function cluster5s(rows){
     }else{
       prev.timestamp = r.timestamp; // last
       prev.rssi = Math.max(prev.rssi ?? -999, r.rssi ?? -999);
+      prev.txPower = (Number.isInteger(r.txPower) ? (Math.max(prev.txPower ?? -999, r.txPower)) : prev.txPower);
       if(Number.isFinite(r.latitude) && Number.isFinite(r.longitude)){
         prev.latitude = r.latitude; prev.longitude = r.longitude;
       }

@@ -7,6 +7,7 @@ import * as EXP from './export.js';
 import * as CLU from './cluster.js';
 import * as PRO from './profiler.js';
 import * as SES from './session.js';
+import * as DEC from './parse.js';
 
 const appState = {
   driveMode: false,
@@ -17,7 +18,8 @@ const appState = {
   lastTick: 0,
   renderQueue: [],
   preflightOk: false,
-  filters: { name:'', rssiMin:-80, rssiMax:null, from:null, to:null }, // Default: nahe Signale
+  filters: { name:'', rssiMin:-80, rssiMax:null, from:null, to:null },
+  wakeLock: null,
 };
 
 const el = {
@@ -80,6 +82,7 @@ function renderTable(records){
       <td>${icon} ${r.deviceName ?? ''}</td>
       <td>${(r.serviceUUIDs||[]).join(';')}</td>
       <td>${r.rssi ?? ''}</td>
+      <td>${r.txPower ?? ''}</td>
       <td>${r.latitude ?? ''}</td>
       <td>${r.longitude ?? ''}</td>
       <td>${r.count ?? ''}</td>`;
@@ -112,10 +115,15 @@ async function ingest(evt){
     deviceName: evt.deviceName ?? null,
     serviceUUIDs: Array.isArray(evt.serviceUUIDs) ? evt.serviceUUIDs : [],
     rssi: Number.isInteger(evt.rssi) ? evt.rssi : null,
+    txPower: Number.isInteger(evt.txPower) ? evt.txPower : null,
     latitude: position?.coords ? position.coords.latitude : null,
     longitude: position?.coords ? position.coords.longitude : null,
     sessionId,
-    category: '', vendor: '', icon: ''
+    category: '', vendor: '', icon: '',
+    manufacturerData: DEC.mfgToObject(evt.manufacturerData),
+    serviceData: DEC.svcToObject(evt.serviceData),
+    // decoded fields (optional)
+    ...DEC.decode(evt.manufacturerData, evt.serviceData)
   };
   const prof = PRO.profileDevice(base.deviceName, base.serviceUUIDs);
   const record = { ...base, ...prof };
@@ -155,6 +163,7 @@ el.btnStart.addEventListener('click', async ()=>{
 
 el.btnStop.addEventListener('click', async ()=>{
   await BLE.stopScan();
+  await releaseWakeLock();
   el.btnStart.disabled = false; el.btnStop.disabled = true;
   el.status.textContent = 'Scan gestoppt';
 });
@@ -166,13 +175,36 @@ el.toggleDrive.addEventListener('change', async (e)=>{
   if(appState.driveMode){
     GEO.setRate('fast');
     await BLE.setRenderPaused(true);
+    await requestWakeLock();
   }else{
     GEO.setRate('normal');
     await BLE.setRenderPaused(false);
+    await releaseWakeLock();
     await refreshUI();
     MAP.fitToData();
   }
 });
+
+// WakeLock helpers
+async function requestWakeLock(){
+  try{
+    if('wakeLock' in navigator){
+      appState.wakeLock = await navigator.wakeLock.request('screen');
+      appState.wakeLock.addEventListener('release', ()=>{
+        console.log('WakeLock released');
+      });
+      document.addEventListener('visibilitychange', async ()=>{
+        if(document.visibilityState === 'visible' && appState.driveMode){
+          try{ appState.wakeLock = await navigator.wakeLock.request('screen'); }catch{}
+        }
+      });
+    }
+  }catch(e){ console.warn('WakeLock not granted', e); }
+}
+async function releaseWakeLock(){
+  try{ await appState.wakeLock?.release(); }catch{}
+  appState.wakeLock = null;
+}
 
 el.toggleCluster.addEventListener('change', (e)=>{ appState.cluster = !!e.target.checked; refreshUI(); });
 
@@ -232,8 +264,6 @@ async function preflight(){
   await MAP.init();
   await GEO.init();
   SES.init();
-  // Default-RSSI Min in die UI spiegeln
-  document.getElementById('fRssiMin').placeholder = 'RSSI min (dBm, Standard: -80)';
   el.status.textContent = 'Bereit.';
   refreshUI();
 })();
