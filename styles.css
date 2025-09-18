@@ -23,6 +23,7 @@ h1 {margin:0; font-size:1.2rem}
 
 table {width:100%; border-collapse: collapse;}
 th, td {text-align:left; padding:.35rem .4rem; border-bottom:1px solid #1f2937; font-size:.92rem}
+td:nth-child(7){ text-align:right; }
 
 footer {padding:1rem; color:var(--muted)}
 

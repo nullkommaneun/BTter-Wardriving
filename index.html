@@ -29,14 +29,13 @@
       <input type="checkbox" id="toggleDrive" />
       <span>Fahrmodus</span>
     </label>
-    <label><input type="checkbox" id="toggleHeatmap" /> Heatmap</label>
     <label><input type="checkbox" id="toggleCluster" checked/> Cluster (5 s)</label>
   </section>
 
   <section class="filters">
     <input id="fName" placeholder="Gerätename enthält…" />
-    <input id="fRssiMin" type="number" placeholder="RSSI min" />
-    <input id="fRssiMax" type="number" placeholder="RSSI max" />
+    <input id="fRssiMin" type="number" placeholder="RSSI min (dBm)" />
+    <input id="fRssiMax" type="number" placeholder="RSSI max (dBm)" />
     <input id="fFrom" type="datetime-local" />
     <input id="fTo" type="datetime-local" />
     <button id="btnApplyFilters">Filter anwenden</button>
@@ -55,6 +54,7 @@
             <th>RSSI</th>
             <th>Lat</th>
             <th>Lon</th>
+            <th>cnt</th>
           </tr>
         </thead>
         <tbody id="tblBody"></tbody>
@@ -68,8 +68,10 @@
   </section>
 
   <section class="export">
-    <button id="btnExportJSON">Export JSON</button>
-    <button id="btnExportCSV">Export CSV</button>
+    <button id="btnExportJSON">Export JSON (alle)</button>
+    <button id="btnExportCSV">Export CSV (alle)</button>
+    <button id="btnExportCSVFiltered">Export CSV (gefiltert)</button>
+    <button id="btnExportCSVCluster">Export CSV (Cluster 5s)</button>
   </section>
 
   <footer>
