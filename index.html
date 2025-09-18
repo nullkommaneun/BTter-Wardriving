@@ -3,8 +3,9 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; img-src 'self' data: https://*.tile.openstreetmap.org; style-src 'self' https://unpkg.com 'unsafe-inline'; script-src 'self' https://unpkg.com; connect-src 'self';"/>
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; img-src 'self' data: https://*.tile.openstreetmap.org; style-src 'self' https://unpkg.com 'unsafe-inline'; script-src 'self' https://unpkg.com; connect-src 'self' blob:;"/>
   <title>BLE Scan – Fahrmodus</title>
+  <meta name="app-version" content="1.3.1"/>
   <link rel="manifest" href="./manifest.json" />
   <link rel="stylesheet" href="./styles.css" />
   <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"
@@ -12,7 +13,7 @@
 </head>
 <body>
   <header>
-    <h1>BLE Scan <span class="badge" id="modeBadge">Normalmodus</span></h1>
+    <h1>BLE Scan <span class="badge" id="modeBadge">Normalmodus</span> <small class="muted">v1.3.1</small></h1>
     <div id="status">Preflight ausstehend…</div>
     <div class="stats">
       <div><span id="uniqueCount">0</span><label>Einzigartige Geräte</label></div>
@@ -25,7 +26,7 @@
 
   <section class="controls">
     <button id="btnPreflight">Preflight prüfen</button>
-    <button id="btnStart">Scan starten</button>
+    <button id="btnStart" title="Startet den BLE-Scan">Scan starten</button>
     <button id="btnStop" disabled>Scan stoppen</button>
     <label class="switch">
       <input type="checkbox" id="toggleDrive" />
@@ -35,19 +36,19 @@
     <label title="Pfadverlust-Exponent, typ. 1.6–2.2 outdoor, 2–3 indoor">n=<input id="pathLossN" type="number" step="0.1" min="1.0" max="4.0" value="2.0" style="width:5rem"/></label>
   </section>
 
-  <section class="filters">
-    <input id="fName" placeholder="Gerätename enthält…" />
-    <input id="fRssiMin" type="number" placeholder="RSSI min (dBm, Standard: -80)" />
-    <input id="fRssiMax" type="number" placeholder="RSSI max (dBm)" />
-    <input id="fFrom" type="datetime-local" />
-    <input id="fTo" type="datetime-local" />
-    <button id="btnApplyFilters">Filter anwenden</button>
-    <button id="btnClearFilters">Filter löschen</button>
+  <section id="preflightPanel" class="panel">
+    <h2>Preflight-Check</h2>
+    <div id="pfList"></div>
+    <div class="hint">
+      Hinweise: Chrome/Android, HTTPS, Standort-Freigabe, „In der Nähe“-Berechtigung. 
+      In Chrome <code>chrome://flags</code> → <b>Experimental Web Platform features</b> aktivieren (für <code>requestLEScan</code>).
+    </div>
   </section>
 
   <section class="layout">
     <div class="panel">
       <h2>Letzte Scans</h2>
+      <div id="err" class="error hidden"></div>
       <table id="tbl">
         <thead>
           <tr>
@@ -85,6 +86,6 @@
 
   <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"
           integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo=" crossorigin=""></script>
-  <script type="module" src="./js/main.js"></script>
+  <script type="module" src="./js/main.js?v=1.3.1"></script>
 </body>
 </html>
