@@ -45,6 +45,10 @@ export function fallbackProfileByDecoded(record){
     if(hasFEF3){
       return { category: record.category || 'Fast Pair', vendor: record.vendor || 'Google', icon: record.icon || '🎧' };
     }
+    const hasFD69 = record.serviceUUIDs.some(u => (u||'').toLowerCase().includes('fd69'));
+    if(hasFD69){
+      return { category: record.category || 'Nearby', vendor: record.vendor || 'Google/Microsoft', icon: record.icon || '📡' };
+    }
   }
   // Known proprietary (example): 0xFCF1 in serviceData
   const svc = record.serviceData || {};
@@ -54,5 +58,6 @@ export function fallbackProfileByDecoded(record){
   }
 
   if(mfg['0x004c']){ return { category: record.category || 'Tracker', vendor: record.vendor || 'Apple', icon: record.icon || '🧭' }; }
+  if(mfg['0x0006']){ return { category: record.category || 'Swift Pair', vendor: record.vendor || 'Microsoft', icon: record.icon || '💻' }; }
   return { category: record.category || '', vendor: record.vendor || '', icon: record.icon || '📡' };
 }

@@ -48,6 +48,7 @@ const appState = {
   pathLossN: 2.0,
   lastPacketIso: null,
   lastMapUpdate: 0,
+  rssiEma: new Map(),
   lastAdvTs: Date.now(),
 };
 
@@ -117,6 +118,13 @@ function estDistance(rssi, txPower, n){
   return Number.isFinite(clamped) ? Number(clamped.toFixed(2)) : null;
 }
 
+
+function ema(prev, x, alpha=0.3){
+  if(!Number.isFinite(x)) return prev ?? null;
+  if(!Number.isFinite(prev)) return x;
+  return (1-alpha)*prev + alpha*x;
+}
+
 // Rendering
 function renderTable(records){
   const maxRows = 5;
@@ -183,9 +191,13 @@ async function ingest(evt){
     serviceData: DEC.svcToObject(evt.serviceData),
     ...DEC.decode(evt.manufacturerData, evt.serviceData)
   };
-  base.distanceM = estDistance(base.rssi, base.txPower, appState.pathLossN);
+  base.distanceM = estDistance(Number.isFinite(appState.rssiEma.get(deviceKey(base.deviceName, base.serviceUUIDs))) ? Math.round(appState.rssiEma.get(deviceKey(base.deviceName, base.serviceUUIDs))) : base.rssi, base.txPower, appState.pathLossN);
+  const key = deviceKey(base.deviceName, base.serviceUUIDs);
+  const prev = appState.rssiEma.get(key);
+  const sm = ema(prev, base.rssi);
+  if(Number.isFinite(sm)) appState.rssiEma.set(key, sm);
   let prof = PRO.profileDevice(base.deviceName, base.serviceUUIDs);
-  let record = { ...base, ...prof };
+  let record = { ...base, ...prof, rssiSmoothed: Number.isFinite(sm)? Math.round(sm): null };
   const fb = PRO.fallbackProfileByDecoded(record);
   record = { ...record, ...fb };
 
@@ -337,7 +349,8 @@ setInterval(()=>{
 // Watchdog: restart scan if no adverts for >20s
 setInterval(async ()=>{
   const silentMs = Date.now() - appState.lastAdvTs;
-  if(appState.preflightOk && silentMs > 20000){
+  const thr = appState.driveMode ? 12000 : 20000;
+  if(appState.preflightOk && silentMs > thr){
     console.warn('Watchdog: keine Advertisements seit', silentMs, 'ms → Restart Scan');
     try{ await BLE.stopScan(); }catch{}
     try{ await BLE.startScan(); }catch(e){ console.warn('Restart failed', e); }
@@ -348,6 +361,8 @@ setInterval(async ()=>{
 // Resubscribe when page becomes visible
 document.addEventListener('visibilitychange', async ()=>{
   if(document.visibilityState === 'visible' && appState.preflightOk){
+    try{ await EXP; }catch{}
+    try{ await import('./storage.js').then(m=>m.flushNow && m.flushNow()); }catch{}
     try{ await BLE.stopScan(); }catch{}
     try{ await BLE.startScan(); }catch(e){ console.warn('Resubscribe failed', e); }
   }

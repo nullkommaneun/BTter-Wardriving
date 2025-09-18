@@ -53,3 +53,15 @@ export async function getAllRecords(){
     req.onerror = ()=> reject(req.error);
   });
 }
+
+
+export async function flushNow(){
+  if(q.length===0){ return; }
+  const items = q; q = [];
+  if(!db){ fallback.push(...items); return; }
+  try{
+    const tx = db.transaction('records','readwrite');
+    const store = tx.objectStore('records');
+    for(const r of items){ store.add(r); }
+  }catch(e){ console.warn('flushNow failed', e); }
+}
