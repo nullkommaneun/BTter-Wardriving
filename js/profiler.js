@@ -59,5 +59,7 @@ export function fallbackProfileByDecoded(record){
 
   if(mfg['0x004c']){ return { category: record.category || 'Tracker', vendor: record.vendor || 'Apple', icon: record.icon || '🧭' }; }
   if(mfg['0x0006']){ return { category: record.category || 'Swift Pair', vendor: record.vendor || 'Microsoft', icon: record.icon || '💻' }; }
+  if(mfg['0x0075']){ return { category: record.category || 'Industrie/Embedded', vendor: record.vendor || '0x0075', icon: record.icon || '⚙️' }; }
+  if(mfg['0x0006']){ return { category: record.category || 'Swift Pair', vendor: record.vendor || 'Microsoft', icon: record.icon || '💻' }; }
   return { category: record.category || '', vendor: record.vendor || '', icon: record.icon || '📡' };
 }
