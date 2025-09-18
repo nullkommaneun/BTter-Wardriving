@@ -1,4 +1,4 @@
-export function cluster5s(rows){
+export function cluster5s(rows, pathLossN=2.0){
   const out = [];
   const buckets = new Map();
   const windowMs = 5000;
@@ -12,8 +12,11 @@ export function cluster5s(rows){
       buckets.set(k, { ...r, uuSet: new Set(r.serviceUUIDs||[]), count: 1 });
     }else{
       prev.timestamp = r.timestamp; // last
-      prev.rssi = Math.max(prev.rssi ?? -999, r.rssi ?? -999);
-      prev.txPower = (Number.isInteger(r.txPower) ? (Math.max(prev.txPower ?? -999, r.txPower)) : prev.txPower);
+      // keep strongest RSSI/txPower for minimal distance estimate
+      if(Number.isFinite(r.rssi) && (!Number.isFinite(prev.rssi) || r.rssi > prev.rssi)){
+        prev.rssi = r.rssi;
+        prev.txPower = r.txPower ?? prev.txPower;
+      }
       if(Number.isFinite(r.latitude) && Number.isFinite(r.longitude)){
         prev.latitude = r.latitude; prev.longitude = r.longitude;
       }
@@ -24,6 +27,8 @@ export function cluster5s(rows){
   for(const v of buckets.values()){
     v.serviceUUIDs = Array.from(v.uuSet);
     delete v.uuSet;
+    // recompute distance with strongest RSSI
+    v.distanceM = estDistance(v.rssi, v.txPower, pathLossN);
     out.push(v);
   }
   return out.sort((a,b)=> a.timestamp.localeCompare(b.timestamp));
@@ -33,4 +38,14 @@ function deviceKey(r){
   const n = (r.deviceName || '∅').trim().toLowerCase();
   const u = (r.serviceUUIDs && r.serviceUUIDs[0]) ? r.serviceUUIDs[0] : '∅';
   return n + '|' + u;
+}
+
+// simple distance function duplicated here to avoid import cycles
+function estDistance(rssi, txPower, n){
+  if(!Number.isFinite(rssi)) return null;
+  const ref = Number.isFinite(txPower) ? txPower : -59;
+  const N = Number.isFinite(n) ? Math.max(1.0, Math.min(4.0, n)) : 2.0;
+  const d = Math.pow(10, (ref - rssi)/(10*N));
+  const clamped = Math.max(0.1, Math.min(50, d));
+  return Number.isFinite(clamped) ? Number(clamped.toFixed(2)) : null;
 }

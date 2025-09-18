@@ -1,5 +1,5 @@
 const DB_NAME = 'ble-scan-db';
-const DB_VERSION = 2; // bump for new fields
+const DB_VERSION = 3; // distance + extra fields
 let db = null;
 let fallback = [];
 

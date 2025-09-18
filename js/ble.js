@@ -1,9 +1,7 @@
 let scanRef = null;
-let pausedRender = false;
 let advHandler = null;
 
 export function onAdvertisement(cb){ advHandler = cb; }
-export async function setRenderPaused(p){ pausedRender = !!p; }
 
 export async function startScan(){
   if(!navigator.bluetooth){ throw new Error('Web Bluetooth nicht verfügbar'); }
@@ -30,5 +28,5 @@ function onAdv(ev){
   const rssi = Number.isFinite(ev.rssi) ? Math.trunc(ev.rssi) : null;
   const txPower = Number.isFinite(ev.txPower) ? Math.trunc(ev.txPower) : null;
   const ad = { deviceName: name, serviceUUIDs: uuids, rssi, txPower, manufacturerData: ev.manufacturerData, serviceData: ev.serviceData };
-  if(!pausedRender && typeof advHandler === 'function') advHandler(ad);
+  if(typeof advHandler === 'function') advHandler(ad); // immer liefern, auch im Fahrmodus
 }

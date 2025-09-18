@@ -20,6 +20,8 @@ const appState = {
   preflightOk: false,
   filters: { name:'', rssiMin:-80, rssiMax:null, from:null, to:null },
   wakeLock: null,
+  pathLossN: 2.0,
+  lastPacketIso: null,
 };
 
 const el = {
@@ -28,6 +30,9 @@ const el = {
   unique: document.getElementById('uniqueCount'),
   packets: document.getElementById('packetCount'),
   rate: document.getElementById('ratePerMin'),
+  lastPkt: document.getElementById('lastPkt'),
+  dots: document.getElementById('dots'),
+  ticker: document.getElementById('driveTicker'),
   tblBody: document.getElementById('tblBody'),
   hiddenHint: document.getElementById('hiddenHint'),
   btnPreflight: document.getElementById('btnPreflight'),
@@ -46,6 +51,7 @@ const el = {
   btnExportCSV: document.getElementById('btnExportCSV'),
   btnExportCSVFiltered: document.getElementById('btnExportCSVFiltered'),
   btnExportCSVCluster: document.getElementById('btnExportCSVCluster'),
+  pathLossN: document.getElementById('pathLossN'),
 };
 
 const nowIso = () => new Date().toISOString();
@@ -68,6 +74,16 @@ function updateStats(){
   el.unique.textContent = String(appState.uniqueSet.size);
   el.packets.textContent = String(appState.packetCount);
   el.rate.textContent = String(getRate());
+  el.lastPkt.textContent = appState.lastPacketIso ? new Date(appState.lastPacketIso).toLocaleTimeString() : '–';
+}
+
+function estDistance(rssi, txPower, n){
+  if(!Number.isFinite(rssi)) return null;
+  const ref = Number.isFinite(txPower) ? txPower : -59; // fallback reference
+  const N = Number.isFinite(n) ? Math.max(1.0, Math.min(4.0, n)) : 2.0;
+  const d = Math.pow(10, (ref - rssi)/(10*N));
+  const clamped = Math.max(0.1, Math.min(50, d));
+  return Number.isFinite(clamped) ? Number(clamped.toFixed(2)) : null;
 }
 
 function renderTable(records){
@@ -83,6 +99,7 @@ function renderTable(records){
       <td>${(r.serviceUUIDs||[]).join(';')}</td>
       <td>${r.rssi ?? ''}</td>
       <td>${r.txPower ?? ''}</td>
+      <td>${r.distanceM ?? ''}</td>
       <td>${r.latitude ?? ''}</td>
       <td>${r.longitude ?? ''}</td>
       <td>${r.count ?? ''}</td>`;
@@ -100,11 +117,10 @@ async function getFiltered(){
 }
 
 async function refreshUI(){
-  if(appState.driveMode) return;
   const rows = await getFiltered();
-  const clustered = appState.cluster ? CLU.cluster5s(rows) : rows;
+  const clustered = appState.cluster ? CLU.cluster5s(rows, appState.pathLossN) : rows;
   renderTable(clustered);
-  MAP.update(clustered);
+  if(!appState.driveMode){ MAP.update(clustered); }
 }
 
 async function ingest(evt){
@@ -122,9 +138,9 @@ async function ingest(evt){
     category: '', vendor: '', icon: '',
     manufacturerData: DEC.mfgToObject(evt.manufacturerData),
     serviceData: DEC.svcToObject(evt.serviceData),
-    // decoded fields (optional)
     ...DEC.decode(evt.manufacturerData, evt.serviceData)
   };
+  base.distanceM = estDistance(base.rssi, base.txPower, appState.pathLossN);
   const prof = PRO.profileDevice(base.deviceName, base.serviceUUIDs);
   const record = { ...base, ...prof };
 
@@ -133,6 +149,8 @@ async function ingest(evt){
     appState.packetCount++;
     appState.uniqueSet.add(deviceKey(record.deviceName, record.serviceUUIDs));
     pushRate(Date.now());
+    appState.lastPacketIso = record.timestamp;
+    // Im Fahrmodus keine UI-Render, aber Stats & Ticker laufen
     if(!appState.driveMode){ appState.renderQueue.push(record); }
     updateStats();
   }
@@ -171,40 +189,18 @@ el.btnStop.addEventListener('click', async ()=>{
 el.toggleDrive.addEventListener('change', async (e)=>{
   appState.driveMode = !!e.target.checked;
   el.modeBadge.textContent = appState.driveMode ? 'Fahrmodus' : 'Normalmodus';
+  el.ticker.classList.toggle('hidden', !appState.driveMode);
   resetRate();
   if(appState.driveMode){
     GEO.setRate('fast');
-    await BLE.setRenderPaused(true);
     await requestWakeLock();
   }else{
     GEO.setRate('normal');
-    await BLE.setRenderPaused(false);
     await releaseWakeLock();
     await refreshUI();
     MAP.fitToData();
   }
 });
-
-// WakeLock helpers
-async function requestWakeLock(){
-  try{
-    if('wakeLock' in navigator){
-      appState.wakeLock = await navigator.wakeLock.request('screen');
-      appState.wakeLock.addEventListener('release', ()=>{
-        console.log('WakeLock released');
-      });
-      document.addEventListener('visibilitychange', async ()=>{
-        if(document.visibilityState === 'visible' && appState.driveMode){
-          try{ appState.wakeLock = await navigator.wakeLock.request('screen'); }catch{}
-        }
-      });
-    }
-  }catch(e){ console.warn('WakeLock not granted', e); }
-}
-async function releaseWakeLock(){
-  try{ await appState.wakeLock?.release(); }catch{}
-  appState.wakeLock = null;
-}
 
 el.toggleCluster.addEventListener('change', (e)=>{ appState.cluster = !!e.target.checked; refreshUI(); });
 
@@ -216,12 +212,15 @@ el.btnApplyFilters.addEventListener('click', ()=>{
     from: el.fFrom.value ? new Date(el.fFrom.value).toISOString() : null,
     to: el.fTo.value ? new Date(el.fTo.value).toISOString() : null,
   };
+  appState.pathLossN = parseFloat(el.pathLossN.value) || 2.0;
   refreshUI();
 });
 
 el.btnClearFilters.addEventListener('click', ()=>{
   el.fName.value=''; el.fRssiMin.value=''; el.fRssiMax.value=''; el.fFrom.value=''; el.fTo.value='';
+  el.pathLossN.value = '2.0';
   appState.filters = { name:'', rssiMin:-80, rssiMax:null, from:null, to:null };
+  appState.pathLossN = 2.0;
   refreshUI();
 });
 
@@ -242,7 +241,7 @@ el.btnExportCSVFiltered.addEventListener('click', async ()=>{
 
 el.btnExportCSVCluster.addEventListener('click', async ()=>{
   const rows = await getFiltered();
-  const clustered = CLU.cluster5s(rows);
+  const clustered = CLU.cluster5s(rows, appState.pathLossN);
   EXP.exportCSV(clustered, 'ble-scan_cluster5s');
 });
 
@@ -255,6 +254,35 @@ async function preflight(){
   if(!('serviceWorker' in navigator)) return appState.preflightOk;
   try{ await navigator.serviceWorker.register('./service-worker.js'); }catch{}
   return appState.preflightOk;
+}
+
+// Drive ticker animation
+let dotPhase = 0;
+setInterval(()=>{
+  if(!appState.driveMode) return;
+  dotPhase = (dotPhase + 1) % 3;
+  el.dots.textContent = '•'.repeat(dotPhase+1);
+  updateStats(); // keep rate/min & last packet fresh
+}, 1000);
+
+async function requestWakeLock(){
+  try{
+    if('wakeLock' in navigator){
+      appState.wakeLock = await navigator.wakeLock.request('screen');
+      appState.wakeLock.addEventListener('release', ()=>{
+        console.log('WakeLock released');
+      });
+      document.addEventListener('visibilitychange', async ()=>{
+        if(document.visibilityState === 'visible' && appState.driveMode){
+          try{ appState.wakeLock = await navigator.wakeLock.request('screen'); }catch{}
+        }
+      });
+    }
+  }catch(e){ console.warn('WakeLock not granted', e); }
+}
+async function releaseWakeLock(){
+  try{ await appState.wakeLock?.release(); }catch{}
+  appState.wakeLock = null;
 }
 
 (async function(){

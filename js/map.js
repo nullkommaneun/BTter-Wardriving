@@ -22,7 +22,7 @@ export function update(rows){
       const name = (r.icon||'') + ' ' + (r.deviceName||'');
       const uu = (r.serviceUUIDs||[]).join(';');
       const cnt = r.count ?? '';
-      const html = `<b>${name}</b><br/>${new Date(r.timestamp).toLocaleString()}<br/>RSSI: ${r.rssi} txP:${r.txPower ?? ''}<br/>UUIDs: ${uu}<br/>Count(5s): ${cnt}`;
+      const html = `<b>${name}</b><br/>${new Date(r.timestamp).toLocaleString()}<br/>RSSI: ${r.rssi} txP:${r.txPower ?? ''} d≈${r.distanceM ?? ''}m<br/>UUIDs: ${uu}<br/>Count(5s): ${cnt}`;
       m.bindPopup(html);
       markersLayer.addLayer(m);
     }

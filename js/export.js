@@ -8,12 +8,9 @@ function download(name, blob){
 
 function toCSV(rows, prefix){
   const header = [
-    'timestamp','deviceName','serviceUUIDs','rssi','txPower','latitude','longitude','sessionId','category','vendor','icon','count',
-    // raw fields
+    'timestamp','deviceName','serviceUUIDs','rssi','txPower','distanceM','latitude','longitude','sessionId','category','vendor','icon','count',
     'manufacturerData','serviceData',
-    // decoded (optional)
-    'beaconType','beaconUUID','beaconMajor','beaconMinor','beaconTxPower','eddystoneURL','eddystoneTx','eddystoneVersion','eddystoneVBatt_mV','eddystoneTemp_C','eddystoneAdvCount','eddystoneSecCount'
-
+    'beaconType','beaconUUID','beaconMajor','beaconMinor','beaconTxPower','eddystoneURL','eddystoneTx','eddystoneVersion','eddystoneVBatt_mV','eddystoneTemp_C','eddystoneAdvCount','eddystoneSecCount'\n
   ];
   const lines = [header.join(',').trimEnd()];
   for(const r of rows){
@@ -21,7 +18,7 @@ function toCSV(rows, prefix){
     const mfg = r.manufacturerData ? JSON.stringify(r.manufacturerData) : '';
     const svc = r.serviceData ? JSON.stringify(r.serviceData) : '';
     const vals = [
-      r.timestamp, r.deviceName||'', uu, r.rssi??'', r.txPower??'', r.latitude??'', r.longitude??'', r.sessionId||'', r.category||'', r.vendor||'', r.icon||'', r.count??'',
+      r.timestamp, r.deviceName||'', uu, r.rssi??'', r.txPower??'', r.distanceM??'', r.latitude??'', r.longitude??'', r.sessionId||'', r.category||'', r.vendor||'', r.icon||'', r.count??'',
       mfg, svc,
       r.beaconType||'', r.beaconUUID||'', r.beaconMajor??'', r.beaconMinor??'', r.beaconTxPower??'', r.eddystoneURL||'', r.eddystoneTx??'', r.eddystoneVersion??'', r.eddystoneVBatt_mV??'', r.eddystoneTemp_C??'', r.eddystoneAdvCount??'', r.eddystoneSecCount??''
     ];
