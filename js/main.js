@@ -79,16 +79,34 @@ const el = {
   fTo: document.getElementById('fTo'),
   btnApplyFilters: document.getElementById('btnApplyFilters'),
   btnClearFilters: document.getElementById('btnClearFilters'),
-  fApple: document.getElementById('fApple'),
-  fFastPair: document.getElementById('fFastPair'),
-  fIndustrie: document.getElementById('fIndustrie'),
-  dbg: document.getElementById('dbg'),
   btnExportJSON: document.getElementById('btnExportJSON'),
   btnExportCSV: document.getElementById('btnExportCSV'),
   btnExportCSVFiltered: document.getElementById('btnExportCSVFiltered'),
   btnExportCSVCluster: document.getElementById('btnExportCSVCluster'),
+  fApple: document.getElementById('fApple'),
+  fFastPair: document.getElementById('fFastPair'),
+  fIndustrie: document.getElementById('fIndustrie'),
+  dbg: document.getElementById('dbg'),
+  modal: document.getElementById('modalRaw'),
+  modalPre: document.getElementById('modalPre'),
+  modalClose: document.getElementById('modalClose'),
   pathLossN: document.getElementById('pathLossN'),
 };
+
+
+// Modal raw display
+window.__showRaw = (i)=>{
+  try{
+    const rows = window.__lastRows || [];
+    const r = rows[i];
+    if(!r) return;
+    const raw = { timestamp: r.timestamp, name: r.deviceName, category: r.category, vendor: r.vendor, rssi: r.rssi, txPower: r.txPower, distanceM: r.distanceM, beaconType: r.beaconType, manufacturerData: r.manufacturerData, serviceData: r.serviceData };
+    if(el.modalPre) el.modalPre.textContent = JSON.stringify(raw, null, 2);
+    el.modal?.classList.remove('hidden');
+  }catch(e){ console.error(e); }
+};
+el.modalClose?.addEventListener('click', ()=> el.modal?.classList.add('hidden'));
+el.modal?.addEventListener('click', (ev)=>{ if(ev.target===el.modal) el.modal.classList.add('hidden'); });
 
 // Helpers
 const nowIso = () => new Date().toISOString();
@@ -113,15 +131,11 @@ function updateStats(){
 }
 function showError(msg){ const e = document.getElementById('err'); if(!e) return; e.textContent = msg||''; e.classList.toggle('hidden', !msg); }
 
-
-function chooseRefTx(record){
-  if(Number.isFinite(record.txPower)) return record.txPower;
-  const cat = (record.category||'').toLowerCase();
-  if(cat.includes('tracker') || (record.manufacturerData && record.manufacturerData['0x004c'])) return -60; // Apple/Tracker
-  if(cat.includes('fast pair') || (Array.isArray(record.serviceUUIDs) && record.serviceUUIDs.some(u => (u||'').toLowerCase().includes('fef3')))) return -62; // Fast Pair
-  if(cat.includes('tachograph')) return -65; // DTCO
-  if(cat.includes('beacon')) return -59; // Generic Beacon
-  return -59;
+function distanceClass(rssi){
+  if(!Number.isFinite(rssi)) return 'unklar';
+  if(rssi >= -65) return 'nah';
+  if(rssi >= -80) return 'mittel';
+  return 'fern';
 }
 
 function estDistance(rssi, txPower, n){
@@ -151,7 +165,7 @@ async function renderDebug(){
     const svcKeys = Object.keys(r.serviceData||{}).join(', ');
     return { time: r.timestamp, name: r.deviceName||'', cat: r.category||'', vendor: r.vendor||'', rssi: r.rssi, txP: r.txPower, dist: r.distanceM, beacon: r.beaconType||'', mfgKeys, svcKeys, mfg: r.manufacturerData||{}, svc: r.serviceData||{} };
   });
-  el.dbg.innerHTML = '<pre>'+JSON.stringify(pretty, null, 2)+'</pre>';
+  el.dbg.innerHTML = '<pre class="debugjson">'+JSON.stringify(pretty, null, 2)+'</pre>';
 }
 
 function renderTable(records){
@@ -167,7 +181,7 @@ function renderTable(records){
       <td>${(r.serviceUUIDs||[]).join(';')}</td>
       <td>${r.rssi ?? ''}</td>
       <td>${r.txPower ?? ''}</td>
-      <td>${r.distanceM ?? ''}</td>
+      <td>${r.distanceM ?? ''}</td><td>${distanceClass(r.rssi)}</td>
       <td>${r.latitude ?? ''}</td>
       <td>${r.longitude ?? ''}</td>
       <td>${r.count ?? ''}</td>`;
@@ -220,9 +234,7 @@ async function ingest(evt){
     serviceData: DEC.svcToObject(evt.serviceData),
     ...DEC.decode(evt.manufacturerData, evt.serviceData)
   };
-  const rssiUse = Number.isFinite(appState.rssiEma?.get?.(deviceKey(base.deviceName, base.serviceUUIDs))) ? Math.round(appState.rssiEma.get(deviceKey(base.deviceName, base.serviceUUIDs))) : base.rssi;
-  const refTx = chooseRefTx(base);
-  base.distanceM = estDistance(rssiUse, refTx, Number.isFinite(appState.rssiEma.get(deviceKey(base.deviceName, base.serviceUUIDs))) ? Math.round(appState.rssiEma.get(deviceKey(base.deviceName, base.serviceUUIDs))) : base.rssi, base.txPower, appState.pathLossN);
+  base.distanceM = estDistance(Number.isFinite(appState.rssiEma.get(deviceKey(base.deviceName, base.serviceUUIDs))) ? Math.round(appState.rssiEma.get(deviceKey(base.deviceName, base.serviceUUIDs))) : base.rssi, base.txPower, appState.pathLossN);
   const key = deviceKey(base.deviceName, base.serviceUUIDs);
   const prev = appState.rssiEma.get(key);
   const sm = ema(prev, base.rssi);
@@ -388,9 +400,18 @@ setInterval(async ()=>{
   const silentMs = Date.now() - appState.lastAdvTs;
   const thr = appState.driveMode ? 12000 : 20000;
   if(appState.preflightOk && silentMs > thr){
+    // Tier-1 watchdog (quick restart)
     console.warn('Watchdog: keine Advertisements seit', silentMs, 'ms → Restart Scan');
     try{ await BLE.stopScan(); }catch{}
     try{ await BLE.startScan(); }catch(e){ console.warn('Restart failed', e); }
+    appState.lastAdvTs = Date.now();
+  }
+  // Tier-2 hard auto-resync after 60s inactivity
+  if(appState.preflightOk && silentMs > 60000){
+    try{ await import('./storage.js').then(m=>m.flushNow && m.flushNow()); }catch{}
+    try{ await BLE.stopScan(); }catch{}
+    await new Promise(r=>setTimeout(r, 300));
+    try{ await BLE.startScan(); if(el.status) el.status.textContent = 'Auto-Resync nach Inaktivität…'; }catch(e){ console.warn('Hard resync failed', e); }
     appState.lastAdvTs = Date.now();
   }
 }, 5000);
