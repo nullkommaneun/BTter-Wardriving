@@ -35,3 +35,10 @@ footer {padding:1rem; color:var(--muted)}
 
 
 .debug pre { white-space: pre-wrap; background:#0f1520; border:1px solid #1f2937; padding:.5rem; border-radius:.5rem; max-height: 40vh; overflow:auto }
+
+
+.modal { position: fixed; inset: 0; background: rgba(0,0,0,.6); display:flex; align-items:center; justify-content:center; }
+.modal.hidden { display:none; }
+.modal-content { background:#0f1520; border:1px solid #1f2937; color:#e8f0f7; width:min(90vw, 900px); max-height:80vh; overflow:auto; border-radius:.6rem; padding:1rem; position:relative }
+.modal-close { position:absolute; right:.5rem; top:.5rem; background:#1f2a37; border:1px solid #233243; color:#e8f0f7; border-radius:.4rem; padding:.2rem .5rem; cursor:pointer }
+#modalPre { white-space: pre-wrap; }
