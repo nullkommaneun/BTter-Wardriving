@@ -1,4 +1,4 @@
-const CACHE = 'ble-scan-v1.3.5';
+const CACHE = 'ble-scan-v1.3.6';
 const ASSETS = [
   './', './index.html', './styles.css',
   './js/main.js','./js/ble.js','./js/geo.js','./js/storage.js','./js/map.js','./js/filters.js','./js/export.js','./js/cluster.js','./js/profiler.js','./js/session.js','./js/parse.js',
