@@ -27,14 +27,14 @@
     <button id="btnStop" disabled>Scan stoppen</button>
     <label class="switch">
       <input type="checkbox" id="toggleDrive" />
-      <span>Fahrmodus</span>
+      <span>Fahrmodus (mit WakeLock)</span>
     </label>
     <label><input type="checkbox" id="toggleCluster" checked/> Cluster (5 s)</label>
   </section>
 
   <section class="filters">
     <input id="fName" placeholder="Gerätename enthält…" />
-    <input id="fRssiMin" type="number" placeholder="RSSI min (dBm)" />
+    <input id="fRssiMin" type="number" placeholder="RSSI min (dBm, Standard: -80)" />
     <input id="fRssiMax" type="number" placeholder="RSSI max (dBm)" />
     <input id="fFrom" type="datetime-local" />
     <input id="fTo" type="datetime-local" />
@@ -52,6 +52,7 @@
             <th>Gerät</th>
             <th>UUIDs</th>
             <th>RSSI</th>
+            <th>txP</th>
             <th>Lat</th>
             <th>Lon</th>
             <th>cnt</th>
@@ -60,6 +61,7 @@
         <tbody id="tblBody"></tbody>
       </table>
       <div id="hiddenHint" class="hint"></div>
+      <div class="hint">Decoder aktiv: iBeacon (0x004C), Eddystone-URL/TLM → Exporte enthalten Roh- und Decodierfelder.</div>
     </div>
     <div class="panel">
       <h2>Karte</h2>
@@ -75,7 +77,7 @@
   </section>
 
   <footer>
-    <small>Offline-fähig (PWA). BLE-Scan ist nur in unterstützten Browsern möglich. Keine Datenübertragung an Server.</small>
+    <small>Offline-fähig (PWA). BLE-Scan nur in unterstützten Browsern und im Vordergrund. WakeLock hält das Display aktiv.</small>
   </footer>
 
   <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"

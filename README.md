@@ -1,8 +1,7 @@
-# BLE-Scan-App – Fahrmodus (v1.1.0)
+# BLE-Scan-App – Fahrmodus (v1.2.0)
 
-Änderungen:
-- Heatmap entfernt (Code & UI).
-- Standardfilter: RSSI ≥ -80 dBm (änderbar im Filterpanel).
-- Cluster (5 s) zählt jetzt `count` pro Fenster; Tabelle/Popups zeigen den Wert.
-- Erweiterte Kategorien/Heuristiken (Drucker, Radar/Sierzega, Tachograph DTCO/VDO, u.v.m.).
-- Zusätzliche Exporte: „gefiltert“ und „Cluster 5s“.
+Neu:
+- Zusätzliche Felder: `txPower`, `manufacturerData` (roh hex), `serviceData` (roh hex).
+- Decoder: **iBeacon** (0x004C), **Eddystone-URL/TLM** (0xFEAA) → Zusatzfelder in Exporten.
+- Fahrmodus mit **WakeLock** (Bildschirm bleibt an; auto-reacquire bei Rückkehr in den Vordergrund).
+- CSV-Exporte enthalten Roh- und decodierte Felder; Cluster (5 s) mit `count`.

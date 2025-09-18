@@ -1,7 +1,7 @@
-const CACHE = 'ble-scan-v1.1.0';
+const CACHE = 'ble-scan-v1.2.0';
 const ASSETS = [
   './', './index.html', './styles.css',
-  './js/main.js','./js/ble.js','./js/geo.js','./js/storage.js','./js/map.js','./js/filters.js','./js/export.js','./js/cluster.js','./js/profiler.js','./js/session.js',
+  './js/main.js','./js/ble.js','./js/geo.js','./js/storage.js','./js/map.js','./js/filters.js','./js/export.js','./js/cluster.js','./js/profiler.js','./js/session.js','./js/parse.js',
   './manifest.json'
 ];
 self.addEventListener('install', e=>{
