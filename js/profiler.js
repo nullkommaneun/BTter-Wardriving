@@ -30,8 +30,7 @@ export function profileDevice(name, uuids){
   return { category:'', vendor:'', icon:'' };
 }
 
-
-// Fallback by decoded beacon type or manufacturer company ID
+// Fallback by decoded beacon/manufacturer
 export function fallbackProfileByDecoded(record){
   if(record.beaconType === 'iBeacon'){
     return { category: record.category || 'Tracker', vendor: record.vendor || 'Apple/Beacon', icon: record.icon || '🧭' };
@@ -39,10 +38,7 @@ export function fallbackProfileByDecoded(record){
   if(record.beaconType === 'Eddystone-URL' || record.beaconType === 'Eddystone-TLM'){
     return { category: record.category || 'Beacon', vendor: record.vendor || 'Eddystone', icon: record.icon || '🔗' };
   }
-  // Manufacturer Company IDs
   const mfg = record.manufacturerData || {};
-  if(mfg['0x004c']){ // Apple
-    return { category: record.category || 'Tracker', vendor: record.vendor || 'Apple', icon: record.icon || '🧭' };
-  }
+  if(mfg['0x004c']){ return { category: record.category || 'Tracker', vendor: record.vendor || 'Apple', icon: record.icon || '🧭' }; }
   return { category: record.category || '', vendor: record.vendor || '', icon: record.icon || '📡' };
 }

@@ -12,7 +12,6 @@ export function cluster5s(rows, pathLossN=2.0){
       const copy = { ...r };
       copy.uuSet = new Set(r.serviceUUIDs||[]);
       copy.count = 1;
-      out.push(copy);
       buckets.set(k, copy);
     }else{
       prev.timestamp = r.timestamp;
@@ -27,13 +26,14 @@ export function cluster5s(rows, pathLossN=2.0){
       prev.count += 1;
     }
   }
-  const out2 = out.map(v=>{
+  const out2 = [];
+  for(const v of buckets.values()){
     const rec = { ...v };
     rec.serviceUUIDs = Array.from(v.uuSet || []);
     delete rec.uuSet;
     rec.distanceM = estDistance(rec.rssi, rec.txPower, pathLossN);
-    return rec;
-  });
+    out2.push(rec);
+  }
   return out2.sort((a,b)=> a.timestamp.localeCompare(b.timestamp));
 }
 
