@@ -1,7 +1,7 @@
 let current = null;
 let counter = 0;
 let lastEventTs = 0;
-const INACTIVITY_MS = 180_000;
+const INACTIVITY_MS = 180000;
 
 export function init(){
   rollIfNeeded(true);

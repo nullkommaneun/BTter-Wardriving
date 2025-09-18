@@ -10,9 +10,9 @@ function toCSV(rows, prefix){
   const header = [
     'timestamp','deviceName','serviceUUIDs','rssi','txPower','distanceM','latitude','longitude','sessionId','category','vendor','icon','count',
     'manufacturerData','serviceData',
-    'beaconType','beaconUUID','beaconMajor','beaconMinor','beaconTxPower','eddystoneURL','eddystoneTx','eddystoneVersion','eddystoneVBatt_mV','eddystoneTemp_C','eddystoneAdvCount','eddystoneSecCount'\n
+    'beaconType','beaconUUID','beaconMajor','beaconMinor','beaconTxPower','eddystoneURL','eddystoneTx','eddystoneVersion','eddystoneVBatt_mV','eddystoneTemp_C','eddystoneAdvCount','eddystoneSecCount'
   ];
-  const lines = [header.join(',').trimEnd()];
+  const lines = [header.join(',')];
   for(const r of rows){
     const uu = (r.serviceUUIDs||[]).join(';');
     const mfg = r.manufacturerData ? JSON.stringify(r.manufacturerData) : '';
@@ -22,15 +22,15 @@ function toCSV(rows, prefix){
       mfg, svc,
       r.beaconType||'', r.beaconUUID||'', r.beaconMajor??'', r.beaconMinor??'', r.beaconTxPower??'', r.eddystoneURL||'', r.eddystoneTx??'', r.eddystoneVersion??'', r.eddystoneVBatt_mV??'', r.eddystoneTemp_C??'', r.eddystoneAdvCount??'', r.eddystoneSecCount??''
     ];
-    lines.push(vals.map(v => String(v).replaceAll('"','""')).map(v=>`"${v}"`).join(','));
+    lines.push(vals.map(v => String(v).replace(/"/g,'""')).map(v=>`"${v}"`).join(','));
   }
-  const ts = new Date().toISOString().replaceAll(':','-');
+  const ts = new Date().toISOString().replace(/:/g,'-');
   const blob = new Blob([lines.join('\n')], { type:'text/csv' });
   download(`${prefix}_${ts}.csv`, blob);
 }
 
 export function exportJSON(rows){
-  const ts = new Date().toISOString().replaceAll(':','-');
+  const ts = new Date().toISOString().replace(/:/g,'-');
   const blob = new Blob([JSON.stringify(rows, null, 2)], { type:'application/json' });
   download(`ble-scan_${ts}.json`, blob);
 }

@@ -1,4 +1,3 @@
-// (gleich wie v1.2.0) Erweiterte Heuristiken
 const rules = [
   { test:/rockster|teufel/i, category:'Audio', vendor:'Teufel', icon:'🎵' },
   { test:/jbl/i, category:'Audio', vendor:'JBL', icon:'🎵' },

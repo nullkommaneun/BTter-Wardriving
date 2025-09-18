@@ -9,7 +9,7 @@ export async function init(){
     attribution: '&copy; OpenStreetMap'
   }).addTo(map);
   markersLayer = L.layerGroup().addTo(map);
-  map.setView([50.71, 12.49], 12); // Start
+  map.setView([50.71, 12.49], 12);
   initialized = true;
 }
 

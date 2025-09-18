@@ -1,5 +1,5 @@
 const DB_NAME = 'ble-scan-db';
-const DB_VERSION = 3; // distance + extra fields
+const DB_VERSION = 3;
 let db = null;
 let fallback = [];
 
@@ -11,7 +11,7 @@ export async function init(){
 function open(){
   return new Promise((resolve,reject)=>{
     const req = indexedDB.open(DB_NAME, DB_VERSION);
-    req.onupgradeneeded = (e)=>{
+    req.onupgradeneeded = ()=>{
       const db = req.result;
       if(!db.objectStoreNames.contains('records')){
         const store = db.createObjectStore('records', { keyPath: 'id', autoIncrement: true });

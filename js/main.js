@@ -9,12 +9,10 @@ import * as PRO from './profiler.js';
 import * as SES from './session.js';
 import * as DEC from './parse.js';
 
-
+// --- Diagnostics ---
 async function diagnostics(){
   const pf = [];
-  const add = (name, ok, info='') => {
-    pf.push({name, ok, info});
-  };
+  const add = (name, ok, info='') => pf.push({name, ok, info});
   add('SecureContext (HTTPS)', window.isSecureContext === true, location.protocol);
   const ua = navigator.userAgent;
   add('Browser', true, ua);
@@ -36,6 +34,7 @@ async function diagnostics(){
   return pf;
 }
 
+// --- App State ---
 const appState = {
   driveMode: false,
   cluster: true,
@@ -51,8 +50,8 @@ const appState = {
   lastPacketIso: null,
 };
 
+// --- Elements ---
 const el = {
-  swToggle: document.getElementById('toggleSW'),
   status: document.getElementById('status'),
   modeBadge: document.getElementById('modeBadge'),
   unique: document.getElementById('uniqueCount'),
@@ -66,6 +65,7 @@ const el = {
   btnPreflight: document.getElementById('btnPreflight'),
   btnStart: document.getElementById('btnStart'),
   btnStop: document.getElementById('btnStop'),
+  swToggle: document.getElementById('toggleSW'),
   toggleDrive: document.getElementById('toggleDrive'),
   toggleCluster: document.getElementById('toggleCluster'),
   fName: document.getElementById('fName'),
@@ -82,6 +82,7 @@ const el = {
   pathLossN: document.getElementById('pathLossN'),
 };
 
+// --- Helpers ---
 const nowIso = () => new Date().toISOString();
 const clampRateWindowMs = 60_000;
 function resetRate() { appState.rateBuffer.length = 0; appState.lastTick = performance.now(); }
@@ -91,31 +92,29 @@ function pushRate(tsMs){
   while(appState.rateBuffer.length && appState.rateBuffer[0] < cutoff){ appState.rateBuffer.shift(); }
 }
 function getRate(){ return appState.rateBuffer.length; }
-
 function deviceKey(name, uuids){
   const n = (name || '∅').trim().toLowerCase();
   const u = (uuids && uuids[0]) ? uuids[0] : '∅';
   return n + '|' + u;
 }
-
 function updateStats(){
   el.unique.textContent = String(appState.uniqueSet.size);
   el.packets.textContent = String(appState.packetCount);
   el.rate.textContent = String(getRate());
   el.lastPkt.textContent = appState.lastPacketIso ? new Date(appState.lastPacketIso).toLocaleTimeString() : '–';
 }
+function showError(msg){ const e = document.getElementById('err'); if(!e) return; e.textContent = msg||''; e.classList.toggle('hidden', !msg); }
 
 function estDistance(rssi, txPower, n){
   if(!Number.isFinite(rssi)) return null;
-  const ref = Number.isFinite(txPower) ? txPower : -59; // fallback reference
+  const ref = Number.isFinite(txPower) ? txPower : -59; // fallback
   const N = Number.isFinite(n) ? Math.max(1.0, Math.min(4.0, n)) : 2.0;
   const d = Math.pow(10, (ref - rssi)/(10*N));
   const clamped = Math.max(0.1, Math.min(50, d));
   return Number.isFinite(clamped) ? Number(clamped.toFixed(2)) : null;
 }
 
-function showError(msg){ const e = document.getElementById('err'); if(!e) return; e.textContent = msg||''; e.classList.toggle('hidden', !msg); }
-
+// --- Rendering ---
 function renderTable(records){
   const maxRows = 5;
   el.tblBody.innerHTML = '';
@@ -153,6 +152,7 @@ async function refreshUI(){
   if(!appState.driveMode){ MAP.update(clustered); }
 }
 
+// --- Ingest ---
 async function ingest(evt){
   const position = await GEO.sample(appState.driveMode);
   const sessionId = SES.currentSessionId();
@@ -180,16 +180,17 @@ async function ingest(evt){
     appState.uniqueSet.add(deviceKey(record.deviceName, record.serviceUUIDs));
     pushRate(Date.now());
     appState.lastPacketIso = record.timestamp;
-    // Im Fahrmodus keine UI-Render, aber Stats & Ticker laufen
     if(!appState.driveMode){ appState.renderQueue.push(record); }
     updateStats();
   }
 }
 
+// --- BLE hooks ---
 BLE.onAdvertisement(async (ad) => {
   try{ await ingest(ad); } catch(e){ console.error('Ingest failed', e); }
 });
 
+// --- UI Events ---
 el.btnPreflight.addEventListener('click', async ()=>{
   try{
     const report = await diagnostics();
@@ -199,13 +200,6 @@ el.btnPreflight.addEventListener('click', async ()=>{
     const ok = await preflight();
     el.status.textContent = ok ? 'Preflight OK' : 'Preflight: eingeschränkt';
   }catch(e){ console.error(e); showError('Preflight-Fehler: '+e.message); }
-
-  const report = await diagnostics();
-  const okScan = report.find(r=>r.name==='requestLEScan')?.ok;
-  el.btnStart.disabled = !okScan;
-  if(!okScan){ el.btnStart.title = 'Browser unterstützt requestLEScan nicht. Siehe Preflight-Hinweise.'; }
-  const ok = await preflight();
-  el.status.textContent = ok ? 'Preflight OK' : 'Preflight: eingeschränkt';
 });
 
 el.btnStart.addEventListener('click', async ()=>{
@@ -218,7 +212,8 @@ el.btnStart.addEventListener('click', async ()=>{
     el.status.textContent = 'Scan läuft…';
   }catch(e){
     console.error(e);
-    el.status.textContent = 'Scan konnte nicht gestartet werden: ' + e.message; showError('Scan-Start fehlgeschlagen: '+e.message+' — Prüfe Browser/Flags/Berechtigungen.');
+    el.status.textContent = 'Scan konnte nicht gestartet werden: ' + e.message;
+    showError('Scan-Start fehlgeschlagen: '+e.message+' — Prüfe Browser/Flags/Berechtigungen.');
   }
 });
 
@@ -249,19 +244,23 @@ el.toggleCluster.addEventListener('change', (e)=>{ appState.cluster = !!e.target
 
 el.btnApplyFilters.addEventListener('click', ()=>{
   appState.filters = {
-    name: el.fName.value.trim(),
-    rssiMin: el.fRssiMin.value !== '' ? Number(el.fRssiMin.value) : appState.filters.rssiMin,
-    rssiMax: el.fRssiMax.value !== '' ? Number(el.fRssiMax.value) : null,
-    from: el.fFrom.value ? new Date(el.fFrom.value).toISOString() : null,
-    to: el.fTo.value ? new Date(el.fTo.value).toISOString() : null,
+    name: el.fName?.value.trim() || '',
+    rssiMin: el.fRssiMin?.value !== '' ? Number(el.fRssiMin.value) : appState.filters.rssiMin,
+    rssiMax: el.fRssiMax?.value !== '' ? Number(el.fRssiMax.value) : null,
+    from: el.fFrom?.value ? new Date(el.fFrom.value).toISOString() : null,
+    to: el.fTo?.value ? new Date(el.fTo.value).toISOString() : null,
   };
-  appState.pathLossN = parseFloat(el.pathLossN.value) || 2.0;
+  appState.pathLossN = parseFloat(el.pathLossN?.value) || 2.0;
   refreshUI();
 });
 
 el.btnClearFilters.addEventListener('click', ()=>{
-  el.fName.value=''; el.fRssiMin.value=''; el.fRssiMax.value=''; el.fFrom.value=''; el.fTo.value='';
-  el.pathLossN.value = '2.0';
+  if(el.fName) el.fName.value='';
+  if(el.fRssiMin) el.fRssiMin.value='';
+  if(el.fRssiMax) el.fRssiMax.value='';
+  if(el.fFrom) el.fFrom.value='';
+  if(el.fTo) el.fTo.value='';
+  if(el.pathLossN) el.pathLossN.value='2.0';
   appState.filters = { name:'', rssiMin:-80, rssiMax:null, from:null, to:null };
   appState.pathLossN = 2.0;
   refreshUI();
@@ -288,14 +287,23 @@ el.btnExportCSVCluster.addEventListener('click', async ()=>{
   EXP.exportCSV(clustered, 'ble-scan_cluster5s');
 });
 
+// --- Preflight & boot ---
 async function preflight(){
   const hasBLE = !!(navigator.bluetooth && navigator.bluetooth.requestLEScan);
   const hasGeo = !!navigator.geolocation;
   const hasWakeLock = !!(navigator.wakeLock && navigator.wakeLock.request);
   appState.preflightOk = hasBLE && hasGeo;
   document.title = `BLE Scan – ${hasBLE? 'BLE✓':'BLE×'} ${hasGeo? 'Geo✓':'Geo×'} ${hasWakeLock? 'WL✓':'WL×'}`;
-  if(!('serviceWorker' in navigator)) return appState.preflightOk;
-  try{ if(el.swToggle?.checked){ await navigator.serviceWorker.register('./service-worker.js'); } }catch(e){ console.warn('SW reg fail', e); }
+  if('serviceWorker' in navigator){
+    try{
+      if(el.swToggle?.checked){
+        await navigator.serviceWorker.register('./service-worker.js');
+      }else{
+        const regs = await navigator.serviceWorker.getRegistrations();
+        for(const r of regs){ r.unregister(); }
+      }
+    }catch(e){ console.warn('SW reg fail', e); }
+  }
   return appState.preflightOk;
 }
 
@@ -304,17 +312,16 @@ let dotPhase = 0;
 setInterval(()=>{
   if(!appState.driveMode) return;
   dotPhase = (dotPhase + 1) % 3;
-  el.dots.textContent = '•'.repeat(dotPhase+1);
-  updateStats(); // keep rate/min & last packet fresh
+  if(el.dots) el.dots.textContent = '•'.repeat(dotPhase+1);
+  updateStats();
 }, 1000);
 
+// WakeLock helpers
 async function requestWakeLock(){
   try{
     if('wakeLock' in navigator){
       appState.wakeLock = await navigator.wakeLock.request('screen');
-      appState.wakeLock.addEventListener('release', ()=>{
-        console.log('WakeLock released');
-      });
+      appState.wakeLock.addEventListener('release', ()=>{ console.log('WakeLock released'); });
       document.addEventListener('visibilitychange', async ()=>{
         if(document.visibilityState === 'visible' && appState.driveMode){
           try{ appState.wakeLock = await navigator.wakeLock.request('screen'); }catch{}
@@ -328,17 +335,20 @@ async function releaseWakeLock(){
   appState.wakeLock = null;
 }
 
+// Boot
 (async function(){
   try{
-  resetRate();
-  await preflight();
-  await DB.init();
-  try{ await MAP.init(); }catch(e){ console.error(e); showError('Karte konnte nicht initialisiert werden. Prüfe CSP/Netzwerk.'); }
-  await GEO.init();
-  SES.init();
-  await diagnostics();
-  const ok = await preflight();
-  el.status.textContent = ok ? 'Bereit.' : 'Eingeschränkt, siehe Preflight.';
-  refreshUI();
-  }catch(e){ console.error(e); showError('Initialisierungsfehler: '+e.message); }
+    resetRate();
+    await diagnostics();
+    const ok = await preflight();
+    try{ await MAP.init(); }catch(e){ console.error(e); showError('Karte konnte nicht initialisiert werden. Prüfe CSP/Netzwerk.'); }
+    await DB.init();
+    await GEO.init();
+    SES.init();
+    el.status.textContent = ok ? 'Bereit.' : 'Eingeschränkt, siehe Preflight.';
+    refreshUI();
+  }catch(e){
+    console.error(e);
+    showError('Initialisierungsfehler: '+e.message);
+  }
 })();

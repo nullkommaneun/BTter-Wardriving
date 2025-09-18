@@ -18,7 +18,7 @@ export async function startScan(){
 
 export async function stopScan(){
   try{ if(scanRef && scanRef.active && scanRef.stop) scanRef.stop(); }catch{}
-  navigator.bluetooth.removeEventListener('advertisementreceived', onAdv);
+  try{ navigator.bluetooth.removeEventListener('advertisementreceived', onAdv); }catch{}
   scanRef = null;
 }
 
@@ -28,5 +28,5 @@ function onAdv(ev){
   const rssi = Number.isFinite(ev.rssi) ? Math.trunc(ev.rssi) : null;
   const txPower = Number.isFinite(ev.txPower) ? Math.trunc(ev.txPower) : null;
   const ad = { deviceName: name, serviceUUIDs: uuids, rssi, txPower, manufacturerData: ev.manufacturerData, serviceData: ev.serviceData };
-  if(typeof advHandler === 'function') advHandler(ad); // immer liefern, auch im Fahrmodus
+  if(typeof advHandler === 'function') advHandler(ad);
 }
