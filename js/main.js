@@ -52,6 +52,7 @@ const appState = {
 };
 
 const el = {
+  swToggle: document.getElementById('toggleSW'),
   status: document.getElementById('status'),
   modeBadge: document.getElementById('modeBadge'),
   unique: document.getElementById('uniqueCount'),
@@ -294,7 +295,7 @@ async function preflight(){
   appState.preflightOk = hasBLE && hasGeo;
   document.title = `BLE Scan – ${hasBLE? 'BLE✓':'BLE×'} ${hasGeo? 'Geo✓':'Geo×'} ${hasWakeLock? 'WL✓':'WL×'}`;
   if(!('serviceWorker' in navigator)) return appState.preflightOk;
-  try{ await navigator.serviceWorker.register('./service-worker.js'); }catch{}
+  try{ if(el.swToggle?.checked){ await navigator.serviceWorker.register('./service-worker.js'); } }catch(e){ console.warn('SW reg fail', e); }
   return appState.preflightOk;
 }
 
