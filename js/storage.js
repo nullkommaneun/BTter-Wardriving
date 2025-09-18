@@ -3,6 +3,22 @@ const DB_VERSION = 3;
 let db = null;
 let fallback = [];
 
+let q = [];
+let flushTimer = null;
+function scheduleFlush(){
+  if(flushTimer) return;
+  flushTimer = setTimeout(async ()=>{
+    const items = q; q = []; flushTimer = null;
+    if(!db){ fallback.push(...items); return; }
+    try{
+      const tx = db.transaction('records','readwrite');
+      const store = tx.objectStore('records');
+      for(const r of items){ store.add(r); }
+    }catch(e){ console.warn('batch write failed', e); }
+  }, 250);
+}
+
+
 export async function init(){
   if(!('indexedDB' in window)) return; 
   db = await open();
@@ -26,16 +42,7 @@ function open(){
   });
 }
 
-export async function addRecord(rec){
-  if(!db){ fallback.push(rec); return; }
-  return new Promise((resolve,reject)=>{
-    const tx = db.transaction('records','readwrite');
-    tx.onabort = ()=> reject(tx.error);
-    tx.onerror = ()=> reject(tx.error);
-    tx.oncomplete = ()=> resolve();
-    tx.objectStore('records').add(rec);
-  });
-}
+export async function addRecord(rec){ q.push(rec); scheduleFlush(); }
 
 export async function getAllRecords(){
   if(!db) return [...fallback];

@@ -39,6 +39,20 @@ export function fallbackProfileByDecoded(record){
     return { category: record.category || 'Beacon', vendor: record.vendor || 'Eddystone', icon: record.icon || '🔗' };
   }
   const mfg = record.manufacturerData || {};
+  // Service UUIDs
+  if(Array.isArray(record.serviceUUIDs)){
+    const hasFEF3 = record.serviceUUIDs.some(u => (u||'').toLowerCase().includes('fef3'));
+    if(hasFEF3){
+      return { category: record.category || 'Fast Pair', vendor: record.vendor || 'Google', icon: record.icon || '🎧' };
+    }
+  }
+  // Known proprietary (example): 0xFCF1 in serviceData
+  const svc = record.serviceData || {};
+  const keys = Object.keys(svc).map(k=>k.toLowerCase());
+  if(keys.includes('0000fcf1-0000-1000-8000-00805f9b34fb') || keys.includes('fcf1')){
+    return { category: record.category || 'Beacon', vendor: record.vendor || '', icon: record.icon || '📡' };
+  }
+
   if(mfg['0x004c']){ return { category: record.category || 'Tracker', vendor: record.vendor || 'Apple', icon: record.icon || '🧭' }; }
   return { category: record.category || '', vendor: record.vendor || '', icon: record.icon || '📡' };
 }

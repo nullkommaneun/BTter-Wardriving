@@ -48,6 +48,7 @@ const appState = {
   pathLossN: 2.0,
   lastPacketIso: null,
   lastMapUpdate: 0,
+  lastAdvTs: Date.now(),
 };
 
 // Elements
@@ -65,6 +66,8 @@ const el = {
   btnPreflight: document.getElementById('btnPreflight'),
   btnStart: document.getElementById('btnStart'),
   btnStop: document.getElementById('btnStop'),
+  btnResync: document.getElementById('btnResync'),
+  hb: document.getElementById('hb'),
   swToggle: document.getElementById('toggleSW'),
   toggleDrive: document.getElementById('toggleDrive'),
   toggleCluster: document.getElementById('toggleCluster'),
@@ -171,7 +174,7 @@ async function ingest(evt){
     deviceName: evt.deviceName ?? null,
     serviceUUIDs: Array.isArray(evt.serviceUUIDs) ? evt.serviceUUIDs : [],
     rssi: Number.isInteger(evt.rssi) ? evt.rssi : null,
-    txPower: Number.isInteger(evt.txPower) ? evt.txPower : null,
+    txPower: (Number.isInteger(evt.txPower) && evt.txPower > -100 && evt.txPower < 30) ? evt.txPower : null,
     latitude: position?.coords ? position.coords.latitude : null,
     longitude: position?.coords ? position.coords.longitude : null,
     sessionId,
@@ -197,6 +200,7 @@ async function ingest(evt){
 }
 
 BLE.onAdvertisement(async (ad) => {
+  appState.lastAdvTs = Date.now();
   try{ await ingest(ad); } catch(e){ console.error('Ingest failed', e); }
 });
 
@@ -230,6 +234,8 @@ if(el.btnStart){
     }
   });
 }
+
+if(el.btnResync){ el.btnResync.addEventListener('click', async ()=>{ try{ await BLE.stopScan(); }catch{} try{ await BLE.startScan(); }catch(e){ showError('Resync fehlgeschlagen: '+e.message); } }); }
 
 if(el.btnStop){
   el.btnStop.addEventListener('click', async ()=>{
@@ -322,8 +328,31 @@ setInterval(()=>{
   dotPhase = (dotPhase + 1) % 3;
   if(el.dots) el.dots.textContent = '•'.repeat(dotPhase+1);
   updateStats();
+  const s = Math.floor((Date.now() - appState.lastAdvTs)/1000);
+  if(el.hb) el.hb.textContent = s+'s seit letztem Paket';
   refreshUI();
 }, 1000);
+
+
+// Watchdog: restart scan if no adverts for >20s
+setInterval(async ()=>{
+  const silentMs = Date.now() - appState.lastAdvTs;
+  if(appState.preflightOk && silentMs > 20000){
+    console.warn('Watchdog: keine Advertisements seit', silentMs, 'ms → Restart Scan');
+    try{ await BLE.stopScan(); }catch{}
+    try{ await BLE.startScan(); }catch(e){ console.warn('Restart failed', e); }
+    appState.lastAdvTs = Date.now();
+  }
+}, 5000);
+
+// Resubscribe when page becomes visible
+document.addEventListener('visibilitychange', async ()=>{
+  if(document.visibilityState === 'visible' && appState.preflightOk){
+    try{ await BLE.stopScan(); }catch{}
+    try{ await BLE.startScan(); }catch(e){ console.warn('Resubscribe failed', e); }
+  }
+});
+
 
 // WakeLock helpers
 async function requestWakeLock(){
