@@ -12,6 +12,8 @@ h1 {margin:0; font-size:1.2rem}
 .stats span {font-weight:700; font-size:1.1rem; display:block}
 .ticker {color: var(--acc); padding-left:.2rem}
 .ticker.hidden{ display:none }
+.error {background:#1f2a37; border:1px solid var(--err); color:#fecaca; padding:.5rem .75rem; border-radius:.5rem; margin:.5rem 0}
+.error.hidden{ display:none }
 
 .controls, .filters, .export {display:flex; gap:.5rem; align-items:center; padding: .75rem 1rem; border-bottom:1px solid #1f2937}
 .controls button, .filters button {background:#1f2a37; color:var(--fg); border:1px solid #233243; padding:.5rem .75rem; border-radius:.5rem; cursor:pointer}
