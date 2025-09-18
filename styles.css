@@ -7,9 +7,11 @@ header {padding:1rem; border-bottom:1px solid #1f2937; display:flex; flex-direct
 h1 {margin:0; font-size:1.2rem}
 .badge {margin-left:.5rem; background:#243244; padding:.2rem .5rem; border-radius:.4rem}
 #status {color:var(--muted)}
-.stats {display:flex; gap:2rem}
+.stats {display:flex; gap:1rem; flex-wrap:wrap}
 .stats div {background:var(--card); padding:.6rem .8rem; border-radius:.6rem; min-width:10ch}
 .stats span {font-weight:700; font-size:1.1rem; display:block}
+.ticker {color: var(--acc); padding-left:.2rem}
+.ticker.hidden{ display:none }
 
 .controls, .filters, .export {display:flex; gap:.5rem; align-items:center; padding: .75rem 1rem; border-bottom:1px solid #1f2937}
 .controls button, .filters button {background:#1f2a37; color:var(--fg); border:1px solid #233243; padding:.5rem .75rem; border-radius:.5rem; cursor:pointer}
@@ -23,7 +25,7 @@ h1 {margin:0; font-size:1.2rem}
 
 table {width:100%; border-collapse: collapse;}
 th, td {text-align:left; padding:.35rem .4rem; border-bottom:1px solid #1f2937; font-size:.92rem}
-td:nth-child(8){ text-align:right; }
+td:nth-child(9){ text-align:right; }
 
 footer {padding:1rem; color:var(--muted)}
 

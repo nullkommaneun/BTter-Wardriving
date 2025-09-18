@@ -1,7 +1,6 @@
-# BLE-Scan-App – Fahrmodus (v1.2.0)
+# BLE-Scan-App – Fahrmodus (v1.3.0)
 
 Neu:
-- Zusätzliche Felder: `txPower`, `manufacturerData` (roh hex), `serviceData` (roh hex).
-- Decoder: **iBeacon** (0x004C), **Eddystone-URL/TLM** (0xFEAA) → Zusatzfelder in Exporten.
-- Fahrmodus mit **WakeLock** (Bildschirm bleibt an; auto-reacquire bei Rückkehr in den Vordergrund).
-- CSV-Exporte enthalten Roh- und decodierte Felder; Cluster (5 s) mit `count`.
+- **Distanzschätzung** pro Paket über RSSI/txPower (Pfadverlust-Exponent n einstellbar, Default 2.0). Export in CSV/JSON als `distanceM`.
+- **Fahrmodus-Feedback**: Live-Ticker + „Letztes Paket“-Zeit, Zähler/Ratemeter aktualisieren weiter. Ingestion läuft, UI-Rendering pausiert.
+- **Cluster (5 s)**: hält stärkstes RSSI/txPower und berechnet min. Distanz im Fenster.
