@@ -10,7 +10,6 @@ import * as SES from './session.js';
 
 const appState = {
   driveMode: false,
-  heatmap: false,
   cluster: true,
   packetCount: 0,
   uniqueSet: new Set(),
@@ -18,7 +17,7 @@ const appState = {
   lastTick: 0,
   renderQueue: [],
   preflightOk: false,
-  filters: { name:'', rssiMin:null, rssiMax:null, from:null, to:null },
+  filters: { name:'', rssiMin:-80, rssiMax:null, from:null, to:null }, // Default: nahe Signale
 };
 
 const el = {
@@ -33,7 +32,6 @@ const el = {
   btnStart: document.getElementById('btnStart'),
   btnStop: document.getElementById('btnStop'),
   toggleDrive: document.getElementById('toggleDrive'),
-  toggleHeatmap: document.getElementById('toggleHeatmap'),
   toggleCluster: document.getElementById('toggleCluster'),
   fName: document.getElementById('fName'),
   fRssiMin: document.getElementById('fRssiMin'),
@@ -44,6 +42,8 @@ const el = {
   btnClearFilters: document.getElementById('btnClearFilters'),
   btnExportJSON: document.getElementById('btnExportJSON'),
   btnExportCSV: document.getElementById('btnExportCSV'),
+  btnExportCSVFiltered: document.getElementById('btnExportCSVFiltered'),
+  btnExportCSVCluster: document.getElementById('btnExportCSVCluster'),
 };
 
 const nowIso = () => new Date().toISOString();
@@ -81,21 +81,27 @@ function renderTable(records){
       <td>${(r.serviceUUIDs||[]).join(';')}</td>
       <td>${r.rssi ?? ''}</td>
       <td>${r.latitude ?? ''}</td>
-      <td>${r.longitude ?? ''}</td>`;
+      <td>${r.longitude ?? ''}</td>
+      <td>${r.count ?? ''}</td>`;
     el.tblBody.appendChild(tr);
   }
   const hidden = Math.max(0, records.length - maxRows);
   el.hiddenHint.textContent = hidden > 0 ? `… ${hidden} weitere verborgen` : '';
 }
 
-async function refreshUI(){
-  if(appState.driveMode) return;
+async function getFiltered(){
   const all = await DB.getAllRecords();
   let rows = all;
   rows = FIL.applyFilters(rows, appState.filters);
+  return rows;
+}
+
+async function refreshUI(){
+  if(appState.driveMode) return;
+  const rows = await getFiltered();
   const clustered = appState.cluster ? CLU.cluster5s(rows) : rows;
   renderTable(clustered);
-  MAP.update(clustered, { heatmap: appState.heatmap });
+  MAP.update(clustered);
 }
 
 async function ingest(evt){
@@ -136,7 +142,6 @@ el.btnPreflight.addEventListener('click', async ()=>{
 el.btnStart.addEventListener('click', async ()=>{
   try{
     await DB.init();
-    // MAP.init() wird bereits beim Start ausgeführt; nicht erneut initialisieren
     await GEO.init();
     SES.init();
     await BLE.startScan();
@@ -169,14 +174,13 @@ el.toggleDrive.addEventListener('change', async (e)=>{
   }
 });
 
-el.toggleHeatmap.addEventListener('change', (e)=>{ appState.heatmap = !!e.target.checked; refreshUI(); });
 el.toggleCluster.addEventListener('change', (e)=>{ appState.cluster = !!e.target.checked; refreshUI(); });
 
 el.btnApplyFilters.addEventListener('click', ()=>{
   appState.filters = {
     name: el.fName.value.trim(),
-    rssiMin: el.fRssiMin.value ? Number(el.fRssiMin.value) : null,
-    rssiMax: el.fRssiMax.value ? Number(el.fRssiMax.value) : null,
+    rssiMin: el.fRssiMin.value !== '' ? Number(el.fRssiMin.value) : appState.filters.rssiMin,
+    rssiMax: el.fRssiMax.value !== '' ? Number(el.fRssiMax.value) : null,
     from: el.fFrom.value ? new Date(el.fFrom.value).toISOString() : null,
     to: el.fTo.value ? new Date(el.fTo.value).toISOString() : null,
   };
@@ -185,7 +189,7 @@ el.btnApplyFilters.addEventListener('click', ()=>{
 
 el.btnClearFilters.addEventListener('click', ()=>{
   el.fName.value=''; el.fRssiMin.value=''; el.fRssiMax.value=''; el.fFrom.value=''; el.fTo.value='';
-  appState.filters = { name:'', rssiMin:null, rssiMax:null, from:null, to:null };
+  appState.filters = { name:'', rssiMin:-80, rssiMax:null, from:null, to:null };
   refreshUI();
 });
 
@@ -197,6 +201,17 @@ el.btnExportJSON.addEventListener('click', async ()=>{
 el.btnExportCSV.addEventListener('click', async ()=>{
   const all = await DB.getAllRecords();
   EXP.exportCSV(all);
+});
+
+el.btnExportCSVFiltered.addEventListener('click', async ()=>{
+  const rows = await getFiltered();
+  EXP.exportCSV(rows, 'ble-scan_filtered');
+});
+
+el.btnExportCSVCluster.addEventListener('click', async ()=>{
+  const rows = await getFiltered();
+  const clustered = CLU.cluster5s(rows);
+  EXP.exportCSV(clustered, 'ble-scan_cluster5s');
 });
 
 async function preflight(){
@@ -217,6 +232,8 @@ async function preflight(){
   await MAP.init();
   await GEO.init();
   SES.init();
+  // Default-RSSI Min in die UI spiegeln
+  document.getElementById('fRssiMin').placeholder = 'RSSI min (dBm, Standard: -80)';
   el.status.textContent = 'Bereit.';
   refreshUI();
 })();

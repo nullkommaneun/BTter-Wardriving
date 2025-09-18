@@ -21,7 +21,8 @@ export function update(rows){
       const m = L.marker([r.latitude, r.longitude]);
       const name = (r.icon||'') + ' ' + (r.deviceName||'');
       const uu = (r.serviceUUIDs||[]).join(';');
-      const html = `<b>${name}</b><br/>${new Date(r.timestamp).toLocaleString()}<br/>RSSI: ${r.rssi}<br/>UUIDs: ${uu}`;
+      const cnt = r.count ?? '';
+      const html = `<b>${name}</b><br/>${new Date(r.timestamp).toLocaleString()}<br/>RSSI: ${r.rssi}<br/>UUIDs: ${uu}<br/>Count(5s): ${cnt}`;
       m.bindPopup(html);
       markersLayer.addLayer(m);
     }

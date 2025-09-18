@@ -7,7 +7,6 @@ export async function setRenderPaused(p){ pausedRender = !!p; }
 
 export async function startScan(){
   if(!navigator.bluetooth){ throw new Error('Web Bluetooth nicht verfügbar'); }
-
   try{
     scanRef = await navigator.bluetooth.requestLEScan({
       keepRepeatedDevices: true,
@@ -16,7 +15,6 @@ export async function startScan(){
   }catch(e){
     throw new Error('requestLEScan nicht möglich: ' + e.message);
   }
-
   navigator.bluetooth.addEventListener('advertisementreceived', onAdv);
 }
 

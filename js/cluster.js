@@ -9,14 +9,15 @@ export function cluster5s(rows){
     const k = key + '#' + b;
     const prev = buckets.get(k);
     if(!prev){
-      buckets.set(k, { ...r, uuSet: new Set(r.serviceUUIDs||[]) });
+      buckets.set(k, { ...r, uuSet: new Set(r.serviceUUIDs||[]), count: 1 });
     }else{
-      prev.timestamp = r.timestamp;
+      prev.timestamp = r.timestamp; // last
       prev.rssi = Math.max(prev.rssi ?? -999, r.rssi ?? -999);
       if(Number.isFinite(r.latitude) && Number.isFinite(r.longitude)){
         prev.latitude = r.latitude; prev.longitude = r.longitude;
       }
       (r.serviceUUIDs||[]).forEach(u => prev.uuSet.add(u));
+      prev.count += 1;
     }
   }
   for(const v of buckets.values()){
