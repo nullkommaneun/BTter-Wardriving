@@ -3,25 +3,34 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; img-src 'self' data: https://*.tile.openstreetmap.org; style-src 'self' https://unpkg.com 'unsafe-inline'; script-src 'self' https://unpkg.com 'unsafe-inline'; connect-src 'self' blob:;"/>
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; img-src 'self' data: https://*.tile.openstreetmap.org; style-src 'self' https://unpkg.com 'unsafe-inline'; script-src 'self' https://unpkg.com 'unsafe-inline'; connect-src 'self' blob:;" />
   <title>BLE Scan – Fahrmodus</title>
-  <meta name="app-version" content="1.5.6"/>
+  <meta name="app-version" content="1.5.6c"/>
   <link rel="manifest" href="./manifest.json" />
   <link rel="stylesheet" href="./styles.css" />
 </head>
 <body>
-<div id="errorBanner" style="display:none;background:#7f1d1d;color:#fff;padding:.5rem 1rem;font-weight:600">Fehler – Details in der Konsole</div>
+  <div id="errorBanner" style="display:none;background:#7f1d1d;color:#fff;padding:.5rem 1rem;font-weight:600">Fehler – Details in der Konsole</div>
+
   <header>
-    <h1>BLE Scan <span class="badge" id="modeBadge">Normalmodus</span> <small class="muted">v1.5.6</small></h1>
+    <h1>BLE Scan <span class="badge" id="modeBadge">Normalmodus</span> <small class="muted">v1.5.6c</small></h1>
     <span id="jsProbe" class="badge muted">JS lädt…</span>
-    <div id="status">Preflight ausstehend…</div>
+    <!-- Sichtbarer Preflight-Status -->
+    <div id="preflightStatus" class="muted">Preflight ausstehend…</div>
+
+    <div id="status" class="muted">Bereit</div>
+
     <div class="stats">
-      <div><span id="uniqueCount">0</span><label>Einzigartige Geräte</label></div>
-      <div><span id="packetCount">0</span><label>Pakete gesamt</label></div>
-      <div><span id="ratePerMin">0</span><label>Rate/min</label></div>
+      <div><span id="cntUnique">0</span><label>Einzigartige Geräte</label></div>
+      <div><span id="cntPackets">0</span><label>Pakete gesamt</label></div>
+      <div><span id="cntRate">0</span><label>Rate/min</label></div>
       <div><span id="lastPkt">–</span><label>Letztes Paket</label></div>
     </div>
-    <div id="driveTicker" class="ticker hidden">Fahrmodus aktiv <span id="dots">•</span> <span id="hb" class="muted" style="margin-left:.5rem"></span></div>
+
+    <div id="driveTicker" class="ticker hidden">
+      Fahrmodus aktiv <span id="dots">•</span>
+      <span id="heartbeat" class="muted" style="margin-left:.5rem"></span>
+    </div>
   </header>
 
   <section class="controls">
@@ -29,13 +38,16 @@
     <button id="btnStart" title="Startet den BLE-Scan">Scan starten</button>
     <button id="btnStop" disabled>Scan stoppen</button>
     <button id="btnResync" title="Scan neu synchronisieren">Resync</button>
+
     <label><input type="checkbox" id="toggleSW" checked /> SW aktiv</label>
     <label class="switch">
       <input type="checkbox" id="toggleDrive" />
       <span>Fahrmodus (WakeLock)</span>
     </label>
     <label><input type="checkbox" id="toggleCluster" checked/> Cluster (5 s)</label>
-    <label title="Pfadverlust-Exponent, typ. 1.6–2.2 outdoor, 2–3 indoor">n=<input id="pathLossN" type="number" step="0.1" min="1.0" max="4.0" value="2.0" style="width:5rem"/></label>
+    <label title="Pfadverlust-Exponent, typ. 1.6–2.2 outdoor, 2–3 indoor">
+      n=<input id="pathLossN" type="number" step="0.1" min="1.0" max="4.0" value="2.0" style="width:5rem"/>
+    </label>
   </section>
 
   <section class="filters">
@@ -52,54 +64,53 @@
     <h2>Preflight-Check</h2>
     <div id="pfList"></div>
     <div class="hint">
-      Hinweise: Chrome/Android, HTTPS, Standort-Freigabe, „In der Nähe“-Berechtigung. 
+      Hinweise: Chrome/Android, HTTPS, Standort-Freigabe, „In der Nähe“-Berechtigung.
       In Chrome <code>chrome://flags</code> → <b>Experimental Web Platform features</b> aktivieren (für <code>requestLEScan</code>).
     </div>
   </section>
 
-  
-<section class="layout">
-  <div class="panel">
-    <h2>Geräte</h2>
-    <div class="hint">Eindeutige Geräte aus dem aktuellen Datenbestand. Klick für Details & Export.</div>
-    <div class="devlist-controls">
-      <input id="devSearch" placeholder="Suche (Name/UUID)…" />
-      <span class="muted" id="devCount">0 Geräte</span>
+  <section class="layout">
+    <div class="panel">
+      <h2>Geräte</h2>
+      <div class="hint">Eindeutige Geräte aus dem aktuellen Datenbestand. Klick für Details & Export.</div>
+      <div class="devlist-controls">
+        <input id="devSearch" placeholder="Suche (Name/UUID)…" />
+        <span class="muted" id="devCount">0 Geräte</span>
+      </div>
+      <ul id="devList" class="devlist"></ul>
     </div>
-    <ul id="devList" class="devlist"></ul>
-  </div>
-  <div class="panel">
-    <h2>Analyse</h2>
-    <div id="analysisEmpty" class="hint">Kein Gerät ausgewählt. Wähle links ein Gerät aus.</div>
-    <div id="analysis" class="hidden">
-      <div class="analysis-header">
-        <div class="title"><span id="anaIcon">📡</span> <span id="anaName">–</span></div>
-        <div class="meta"><span id="anaCat">–</span> • <span id="anaVendor">–</span></div>
-      </div>
-      <div class="grid">
-        <div><label>Pakete</label><div id="anaPackets">0</div></div>
-        <div><label>Erste Sichtung</label><div id="anaFirst">–</div></div>
-        <div><label>Letzte Sichtung</label><div id="anaLast">–</div></div>
-        <div><label>RSSI Ø / Median</label><div id="anaRssiStats">–</div></div>
-        <div><label>Dist Ø / Median</label><div id="anaDistStats">–</div></div>
-      </div>
-      <div class="sparkline-block">
-        <canvas id="anaSpark" width="800" height="160"></canvas>
-      </div>
-      <div class="raw-block">
-        <h3>Rohdaten</h3>
-        <div id="anaRawKeys" class="muted"></div>
-        <pre id="anaRaw" class="debugjson"></pre>
-      </div>
-      <div class="export">
-        <button id="btnExportJSONOne">Export JSON (Gerät)</button>
-        <button id="btnExportCSVOne">Export CSV (Gerät)</button>
-        <button id="btnFilterOnly">Nur dieses Gerät filtern</button>
-      </div>
-    </div>
-  </div>
-</section>
 
+    <div class="panel">
+      <h2>Analyse</h2>
+      <div id="analysisEmpty" class="hint">Kein Gerät ausgewählt. Wähle links ein Gerät aus.</div>
+      <div id="analysis" class="hidden">
+        <div class="analysis-header">
+          <div class="title"><span id="anaIcon">📡</span> <span id="anaName">–</span></div>
+          <div class="meta"><span id="anaCat">–</span> • <span id="anaVendor">–</span></div>
+        </div>
+        <div class="grid">
+          <div><label>Pakete</label><div id="anaPackets">0</div></div>
+          <div><label>Erste Sichtung</label><div id="anaFirst">–</div></div>
+          <div><label>Letzte Sichtung</label><div id="anaLast">–</div></div>
+          <div><label>RSSI Ø / Median</label><div id="anaRssiStats">–</div></div>
+          <div><label>Dist Ø / Median</label><div id="anaDistStats">–</div></div>
+        </div>
+        <div class="sparkline-block">
+          <canvas id="anaSpark" width="800" height="160"></canvas>
+        </div>
+        <div class="raw-block">
+          <h3>Rohdaten</h3>
+          <div id="anaRawKeys" class="muted"></div>
+          <pre id="anaRaw" class="debugjson"></pre>
+        </div>
+        <div class="export">
+          <button id="btnExportJSONOne">Export JSON (Gerät)</button>
+          <button id="btnExportCSVOne">Export CSV (Gerät)</button>
+          <button id="btnFilterOnly">Nur dieses Gerät filtern</button>
+        </div>
+      </div>
+    </div>
+  </section>
 
   <section class="export">
     <button id="btnExportJSON">Export JSON (alle)</button>
@@ -112,7 +123,7 @@
     <small>Offline-fähig (PWA). BLE-Scan nur in unterstützten Browsern und im Vordergrund. WakeLock hält das Display aktiv.</small>
   </footer>
 
-  
-  <script type="module" src="./js/main.js?v=1.5.6"></script>
+  <!-- Wichtig: korrektes Modul & Version für Cache-Busting -->
+  <script type="module" src="./js/main.js?v=1.5.6c"></script>
 </body>
 </html>
