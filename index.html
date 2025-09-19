@@ -8,15 +8,13 @@
   <meta name="app-version" content="1.5.2"/>
   <link rel="manifest" href="./manifest.json" />
   <link rel="stylesheet" href="./styles.css" />
-  <link rel="stylesheet" href="
 </head>
 <body>
 <div id="errorBanner" style="display:none;background:#7f1d1d;color:#fff;padding:.5rem 1rem;font-weight:600">Fehler – Details in der Konsole</div>
   <header>
     <h1>BLE Scan <span class="badge" id="modeBadge">Normalmodus</span> <small class="muted">v1.5.2</small></h1>
     <span id="jsProbe" class="badge muted">JS lädt…</span>
-    <script>
-      try {
+          try {
         document.getElementById('jsProbe').textContent = 'JS geladen';
         window.addEventListener('error', function(e){
           var el = document.getElementById('err'); 
@@ -124,7 +122,7 @@
     <small>Offline-fähig (PWA). BLE-Scan nur in unterstützten Browsern und im Vordergrund. WakeLock hält das Display aktiv.</small>
   </footer>
 
-  <script src="</script>
+  
   <script type="module" src="./js/main.js?v=1.5.2"></script>
 </body>
 </html>
