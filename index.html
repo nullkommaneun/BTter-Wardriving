@@ -1,0 +1,260 @@
+<!doctype html>
+<html lang="de">
+<head>
+  <meta charset="utf-8" />
+  <title>BLE Scan – Fahrmodus (Hybrid)</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <meta name="app-version" content="1.6.2-inline" />
+  <!-- CSP erlaubt Inline-Script für diesen Build -->
+  <meta http-equiv="Content-Security-Policy"
+        content="default-src 'self';
+                 img-src 'self' data:;
+                 style-src 'self' 'unsafe-inline';
+                 script-src 'self' 'unsafe-inline';
+                 connect-src 'self' blob:;">
+  <link rel="manifest" href="./manifest.json" />
+  <link rel="stylesheet" href="./styles.css" />
+  <style>
+    body { margin:0; font-family: system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif; }
+    header { padding: 12px 16px; background:#0ea5e9; color:#002233; }
+    h1 { margin:0 0 6px 0; font-size:20px; display:flex; gap:.5rem; align-items:baseline; }
+    .badge { background:#fff; color:#0b4b6b; border-radius:999px; padding:.1rem .5rem; font-size:12px; }
+    .muted { opacity:.8; font-size:12px; }
+    #errorBanner { display:none; }
+    .stats { display:flex; gap:18px; margin-top:8px; flex-wrap:wrap; }
+    .stats div { display:flex; flex-direction:column; }
+    .stats span { font-weight:700; font-size:18px; }
+    .controls, .panel { padding:12px 16px; }
+    .controls button { margin-right:8px; margin-bottom:8px; }
+    .layout { display:grid; grid-template-columns: 1fr 1fr; gap:16px; padding:12px 16px; }
+    @media (max-width: 900px){ .layout { grid-template-columns: 1fr; } }
+    .devlist { list-style:none; padding:0; margin:8px 0 0 0; }
+    .devlist li { padding:8px 10px; border:1px solid #ddd; border-radius:8px; margin-bottom:6px; }
+    .devlist .name { font-weight:600; }
+    .devlist .meta { font-size:12px; opacity:.8; }
+    .watch-grid { display:grid; grid-template-columns: repeat(auto-fit,minmax(240px,1fr)); gap:10px; }
+    .watch { border:1px solid #ddd; border-radius:10px; padding:10px; background:#fff; }
+    .watch h3 { margin:0 0 6px 0; font-size:14px; }
+    .watch .small { font-size:12px; opacity:.8; }
+    .watch .row { display:flex; justify-content:space-between; margin:4px 0; }
+    .hint { font-size:12px; opacity:.8; }
+  </style>
+</head>
+<body>
+  <div id="errorBanner" style="background:#7f1d1d;color:#fff;padding:.5rem 1rem;font-weight:600">
+    Fehler – Details in der Konsole
+  </div>
+
+  <header>
+    <h1>BLE Scan <span class="badge">Fahrmodus</span> <small class="muted">v1.6.2-inline</small></h1>
+    <div><span id="jsProbe" class="badge muted">JS lädt…</span></div>
+    <div id="preflightStatus" class="muted">Preflight ausstehend…</div>
+    <div id="status" class="muted">Bereit</div>
+
+    <div class="stats">
+      <div><span id="cntUnique">0</span><label>Einzigartige Geräte</label></div>
+      <div><span id="cntPackets">0</span><label>Pakete gesamt</label></div>
+      <div><span id="heartbeat">–</span><label>Heartbeat</label></div>
+    </div>
+  </header>
+
+  <section class="controls">
+    <button id="btnPreflight">Preflight prüfen</button>
+    <button id="btnStart" title="Startet globalen BLE-Scan (requestLEScan)">Globaler Scan starten</button>
+    <button id="btnStop" title="Scan(s) stoppen">Alle stoppen</button>
+    <button id="btnResync" title="Globalen Scan neu initialisieren">Globaler Resync</button>
+    <button id="btnAddWatch" title="Ein bestimmtes Gerät per watchAdvertisements abonnieren">Gerät hinzufügen (watch)</button>
+    <div class="hint" style="margin-top:8px">
+      Globaler Scan nutzt <code>requestLEScan</code>. Falls der Browser keine Events liefert, kannst du beliebig viele Geräte via
+      <code>watchAdvertisements()</code> hinzufügen (funktioniert bei dir bereits zuverlässig).
+    </div>
+  </section>
+
+  <section class="layout">
+    <div class="panel">
+      <h2>Aggregierte Geräte (Top 50)</h2>
+      <ul id="devList" class="devlist"></ul>
+    </div>
+
+    <div class="panel">
+      <h2>Beobachtete Geräte (watchAdvertisements)</h2>
+      <div id="watchGrid" class="watch-grid"></div>
+      <div class="hint">Hier erscheinen alle per „Gerät hinzufügen (watch)“ abonnierten Geräte einzeln mit Zählern.</div>
+    </div>
+  </section>
+
+  <!-- Inline-Script: Hybrid-Scanner -->
+  <script type="module">
+    const ui = {
+      probe: document.getElementById('jsProbe'),
+      pf: document.getElementById('preflightStatus'),
+      status: document.getElementById('status'),
+      err: document.getElementById('errorBanner'),
+      btnPre: document.getElementById('btnPreflight'),
+      btnStart: document.getElementById('btnStart'),
+      btnStop: document.getElementById('btnStop'),
+      btnResync: document.getElementById('btnResync'),
+      btnAddWatch: document.getElementById('btnAddWatch'),
+      cntU: document.getElementById('cntUnique'),
+      cntP: document.getElementById('cntPackets'),
+      heartbeat: document.getElementById('heartbeat'),
+      devList: document.getElementById('devList'),
+      watchGrid: document.getElementById('watchGrid')
+    };
+    ui.probe.textContent = 'JS-Modul geladen (Hybrid)';
+
+    function showError(msg){
+      console.error('[BLE]', msg);
+      ui.err.style.display='block'; ui.err.textContent='Fehler: '+msg;
+      ui.status.textContent = 'Fehler: ' + msg;
+    }
+    function setPF(msg){ ui.pf.textContent = msg; ui.status.textContent = msg; }
+    function setStatus(msg){ ui.status.textContent = msg; }
+    window.addEventListener('error', e=> showError(e.message||'Uncaught error'));
+    window.addEventListener('unhandledrejection', e=> showError(e.reason?.message||'Promise rejected'));
+
+    // --- State ---
+    let globalScan = null;
+    let hbTimer = null;
+    let lastTs = 0;
+    const records = [];                 // alle Pakete (global + watches)
+    const uniq = new Set();
+    const watches = new Map();          // device.id -> { dev, count, lastTs, stop() }
+
+    function nowISO(){ return new Date().toISOString(); }
+    function deviceKey(name, uuids){ const n=(name||'∅').trim().toLowerCase(); const u=(Array.isArray(uuids)&&uuids[0])?uuids[0]:'∅'; return n+'|'+u; }
+    function hexFromView(view){ if(!view) return ''; let s='',v=new Uint8Array(view.buffer||view); for(let i=0;i<v.length;i++) s+=v[i].toString(16).padStart(2,'0'); return s; }
+
+    function renderAggregates(){
+      if(!ui.devList) return;
+      ui.devList.innerHTML = '';
+      const counts = new Map();
+      for(const r of records){
+        const k = deviceKey(r.deviceName, r.serviceUUIDs);
+        counts.set(k, (counts.get(k)||0)+1);
+      }
+      const items = Array.from(counts.entries()).sort((a,b)=>b[1]-a[1]).slice(0,50);
+      for(const [k,c] of items){
+        const li=document.createElement('li');
+        li.innerHTML = `<div class="name">${k}</div><div class="meta">${c} Pakete</div>`;
+        ui.devList.appendChild(li);
+      }
+    }
+
+    function renderWatches(){
+      ui.watchGrid.innerHTML = '';
+      for(const [id, w] of watches){
+        const el = document.createElement('div');
+        el.className = 'watch';
+        el.innerHTML = `
+          <h3>${w.dev.name || '(ohne Name)'} <span class="small">(${id})</span></h3>
+          <div class="row"><span>Pakete</span><span>${w.count}</span></div>
+          <div class="row"><span>Letzte Sichtung</span><span>${w.lastTs?new Date(w.lastTs).toLocaleTimeString():'–'}</span></div>
+          <div class="small">Status: ${w.active?'aktiv':'gestoppt'}</div>
+          <div style="margin-top:8px">
+            <button data-id="${id}" class="btnStopWatch">Watch stoppen</button>
+          </div>
+        `;
+        ui.watchGrid.appendChild(el);
+      }
+      ui.watchGrid.querySelectorAll('.btnStopWatch').forEach(btn=>{
+        btn.addEventListener('click', ()=>{
+          const id = btn.getAttribute('data-id');
+          stopWatch(id);
+        });
+      });
+    }
+
+    function onAnyAdvertisement(e){
+      try{
+        const name=e.device?.name||'';
+        const rssi=(typeof e.rssi==='number'?e.rssi:null);
+        const tx=(typeof e.txPower==='number'?e.txPower:null);
+        const uuids=Array.isArray(e.uuids)?e.uuids.slice():[];
+        const m={}; e.manufacturerData?.forEach((val,key)=>{ m[String(key)] = hexFromView(val); });
+        const s={}; e.serviceData?.forEach((val,key)=>{ s[String(key)] = hexFromView(val); });
+
+        const rec = { timestamp:nowISO(), deviceName:name||null, serviceUUIDs:uuids, rssi:(Number.isInteger(rssi)?rssi:(rssi!==null?Math.round(rssi):null)), txPower:tx, manufacturerData:m, serviceData:s };
+        records.push(rec);
+        lastTs=Date.now();
+
+        uniq.add(deviceKey(rec.deviceName, rec.serviceUUIDs));
+        ui.cntU.textContent = String(uniq.size);
+        ui.cntP.textContent = String(records.length);
+
+        renderAggregates();
+      }catch(err){ showError('Adv-Parse-Fehler: '+err.message); }
+    }
+
+    async function preflight(){
+      const okBLE = !!(navigator.bluetooth && navigator.bluetooth.requestLEScan);
+      const okGeo = !!navigator.geolocation;
+      const okWake = !!(navigator.wakeLock && navigator.wakeLock.request);
+      const msg = `Preflight: requestLEScan:${okBLE?'OK':'NEIN'} | Geolocation:${okGeo?'OK':'NEIN'} | WakeLock:${okWake?'OK':'NEIN'}`;
+      setPF(msg); return okBLE;
+    }
+
+    function startHB(){ stopHB(); hbTimer=setInterval(()=>{ const s=Math.floor((Date.now()-lastTs)/1000); ui.heartbeat.textContent=`letztes Paket vor ${s}s • ${records.length} gesamt`; },1000); }
+    function stopHB(){ if(hbTimer){ clearInterval(hbTimer); hbTimer=null; } }
+
+    async function startGlobal(){
+      const ok = await preflight(); if(!ok) throw new Error('requestLEScan nicht verfügbar');
+      await stopAll(false);
+      console.log('[BLE] requestLEScan()…');
+      globalScan = await navigator.bluetooth.requestLEScan({ keepRepeatedDevices:true, acceptAllAdvertisements:true });
+      navigator.bluetooth.addEventListener('advertisementreceived', onAnyAdvertisement);
+      setStatus('Globaler Scan läuft…');
+      startHB();
+      // Nach 5s prüfen, ob Events ankommen
+      const before = records.length;
+      setTimeout(()=>{ if(globalScan && records.length===before){ setStatus('Keine globalen Pakete binnen 5s. Nutze Geräte-Watches als Workaround.'); }}, 5000);
+    }
+
+    async function addWatch(){
+      try{
+        const dev = await navigator.bluetooth.requestDevice({ acceptAllDevices:true, optionalServices:[] });
+        if(!dev) return;
+        const id = dev.id || (dev.name||'unknown')+'#'+Math.random().toString(36).slice(2,7);
+        const handler = (e)=>{ onAnyAdvertisement(e); const w=watches.get(id); if(w){ w.count++; w.lastTs=Date.now(); } renderWatches(); };
+        dev.addEventListener('advertisementreceived', handler);
+        await dev.watchAdvertisements();
+        watches.set(id, { dev, count:0, lastTs:0, active:true, handler });
+        renderWatches();
+        setStatus('Watch aktiv: '+(dev.name||id));
+        startHB();
+      }catch(e){ showError('Watch-Start fehlgeschlagen: '+e.message); }
+    }
+
+    function stopWatch(id){
+      const w = watches.get(id); if(!w) return;
+      try{ w.dev.removeEventListener('advertisementreceived', w.handler); }catch(_){}
+      // Es gibt keine explizite „unwatch“-API; wir deaktivieren nur die Event-Quelle.
+      w.active = false; renderWatches();
+    }
+
+    async function stopAll(fromUser=true){
+      try{ navigator.bluetooth.removeEventListener('advertisementreceived', onAnyAdvertisement); }catch(_){}
+      try{ globalScan && globalScan.stop && globalScan.stop(); }catch(_){}
+      globalScan = null;
+      // alle Watches deaktivieren
+      for(const [id,w] of watches){
+        try{ w.dev.removeEventListener('advertisementreceived', w.handler); }catch(_){}
+        w.active = false;
+      }
+      renderWatches();
+      stopHB();
+      if(fromUser) setStatus('Alle Scans gestoppt');
+    }
+
+    // Events
+    ui.btnPre.addEventListener('click', preflight);
+    ui.btnStart.addEventListener('click', async()=>{ try{ await startGlobal(); }catch(e){ showError('Start-Fehler: '+e.message); }});
+    ui.btnStop.addEventListener('click', ()=> stopAll(true));
+    ui.btnResync.addEventListener('click', async()=>{ try{ await stopAll(false); await startGlobal(); }catch(e){ showError('Resync-Fehler: '+e.message); }});
+    ui.btnAddWatch.addEventListener('click', addWatch);
+    document.addEventListener('visibilitychange', ()=>{ if(document.visibilityState!=='visible') console.warn('[BLE] Seite im Hintergrund – Scans können pausieren.'); });
+
+    document.addEventListener('DOMContentLoaded', preflight);
+  </script>
+</body>
+</html>
