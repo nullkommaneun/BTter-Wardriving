@@ -14,16 +14,6 @@
   <header>
     <h1>BLE Scan <span class="badge" id="modeBadge">Normalmodus</span> <small class="muted">v1.5.6</small></h1>
     <span id="jsProbe" class="badge muted">JS lädt…</span>
-          try {
-        document.getElementById('jsProbe').textContent = 'JS geladen';
-        window.addEventListener('error', function(e){
-          var el = document.getElementById('err'); 
-          if(!el){ return; }
-          el.textContent = 'Script-Fehler: ' + (e.message || e.error);
-          el.classList.remove('hidden');
-        });
-      } catch(e) {}
-    </script>
     <div id="status">Preflight ausstehend…</div>
     <div class="stats">
       <div><span id="uniqueCount">0</span><label>Einzigartige Geräte</label></div>
