@@ -289,14 +289,14 @@ function selectDevice(key){
   devEl.anaRaw.textContent = JSON.stringify(it.lastRaw, null, 2);
   drawSpark(it.samples);
 
-  devEl.btnExportJSONOne?.onclick = async ()=>{
+  if(devEl.btnExportJSONOne) devEl.btnExportJSONOne.addEventListener('click', async ()=>{
     const rows = await DB.getAllRecords();
     const filtered = rows.filter(r => keyOf(r) === key);
     const ts = new Date().toISOString().replace(/:/g,'-');
     const blob = new Blob([JSON.stringify(filtered, null, 2)], { type:'application/json' });
     const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = `device_${sanitize(it.name)}_${ts}.json`; a.click();
   };
-  devEl.btnExportCSVOne?.onclick = async ()=>{
+  if(devEl.btnExportCSVOne) devEl.btnExportCSVOne.addEventListener('click', async ()=>{
     const rows = await DB.getAllRecords();
     const filtered = rows.filter(r => keyOf(r) === key);
     const header = ['timestamp','deviceName','serviceUUIDs','rssi','txPower','distanceM','latitude','longitude','sessionId','category','vendor','icon'];
@@ -310,7 +310,7 @@ function selectDevice(key){
     const blob = new Blob([lines.join('\n')], { type:'text/csv' });
     const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = `device_${sanitize(it.name)}_${ts}.csv`; a.click();
   };
-  devEl.btnFilterOnly?.onclick = ()=>{
+  if(devEl.btnFilterOnly) devEl.btnFilterOnly.addEventListener('click', ()=>{
     if(el.fName) el.fName.value = it.name || '';
     appState.filters.name = it.name || '';
     refreshUI();
