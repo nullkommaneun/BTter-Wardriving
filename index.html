@@ -2,10 +2,10 @@
 <html lang="de">
 <head>
   <meta charset="utf-8" />
-  <title>BLE Scan – Fahrmodus</title>
+  <title>BLE Scan – Fahrmodus (Diag)</title>
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <meta name="app-version" content="1.6.0-inline" />
-  <!-- CSP erlaubt Inline-Script für diesen Diagnoseschritt -->
+  <meta name="app-version" content="1.6.1-inline" />
+  <!-- CSP angepasst, erlaubt Inline-Script -->
   <meta http-equiv="Content-Security-Policy"
         content="default-src 'self';
                  img-src 'self' data:;
@@ -15,28 +15,21 @@
   <link rel="manifest" href="./manifest.json" />
   <link rel="stylesheet" href="./styles.css" />
   <style>
-    /* Minimaler Look, falls styles.css fehlt */
-    :root { color-scheme: light dark; }
     body { margin:0; font-family: system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif; }
     header { padding: 12px 16px; background:#0ea5e9; color:#002233; }
-    h1 { margin:0 0 6px 0; font-size: 20px; display:flex; gap:.5rem; align-items:baseline; }
+    h1 { margin:0 0 6px 0; font-size:20px; display:flex; gap:.5rem; align-items:baseline; }
     .badge { background:#fff; color:#0b4b6b; border-radius:999px; padding:.1rem .5rem; font-size:12px; }
-    .muted { opacity:.8; font-size: 12px; }
+    .muted { opacity:.8; font-size:12px; }
     #errorBanner { display:none; }
     .stats { display:flex; gap:18px; margin-top:8px; flex-wrap:wrap; }
     .stats div { display:flex; flex-direction:column; }
     .stats span { font-weight:700; font-size:18px; }
-    .controls, .filters, .layout, .export, .panel { padding: 12px 16px; }
-    .controls button, .export button { margin-right:8px; margin-bottom:8px; }
+    .controls, .panel { padding:12px 16px; }
+    .controls button { margin-right:8px; margin-bottom:8px; }
     .devlist { list-style:none; padding:0; margin:8px 0 0 0; }
     .devlist li { padding:8px 10px; border:1px solid #ddd; border-radius:8px; margin-bottom:6px; }
     .devlist .name { font-weight:600; }
     .devlist .meta { font-size:12px; opacity:.8; }
-    .grid { display:grid; grid-template-columns: repeat(auto-fit,minmax(160px,1fr)); gap:10px; }
-    .hint { font-size: 12px; opacity:.8; }
-    .hidden { display:none; }
-    pre.debugjson { background:#1111; padding:8px; border-radius:6px; overflow:auto; }
-    .ticker { margin-top:6px; }
   </style>
 </head>
 <body>
@@ -45,7 +38,7 @@
   </div>
 
   <header>
-    <h1>BLE Scan <span class="badge">Fahrmodus</span> <small class="muted">v1.6.0-inline</small></h1>
+    <h1>BLE Scan <span class="badge">Fahrmodus</span> <small class="muted">v1.6.1-inline</small></h1>
     <div><span id="jsProbe" class="badge muted">JS lädt…</span></div>
     <div id="preflightStatus" class="muted">Preflight ausstehend…</div>
     <div id="status" class="muted">Bereit</div>
@@ -55,11 +48,6 @@
       <div><span id="cntPackets">0</span><label>Pakete gesamt</label></div>
       <div><span id="heartbeat">–</span><label>Heartbeat</label></div>
     </div>
-
-    <div id="driveTicker" class="ticker hidden">
-      Fahrmodus aktiv <span id="dots">•</span>
-      <span id="hb2" class="muted" style="margin-left:.5rem"></span>
-    </div>
   </header>
 
   <section class="controls">
@@ -67,7 +55,7 @@
     <button id="btnStart" title="Startet den BLE-Scan">Scan starten</button>
     <button id="btnStop" title="Scan stoppen">Scan stoppen</button>
     <button id="btnResync" title="Scan neu initialisieren">Resync</button>
-    <div class="hint" style="margin-top:8px">
+    <div class="hint" style="margin-top:8px;font-size:12px;opacity:.8">
       Chrome/Chromium auf Android, HTTPS, Standort- & „In der Nähe“-Berechtigung.
       Unter <code>chrome://flags</code> ggf. <b>Experimental Web Platform features</b> aktivieren.
     </div>
@@ -78,12 +66,13 @@
     <ul id="devList" class="devlist"></ul>
   </section>
 
-  <!-- DIAG: Single-File-Scanner inline (ohne Importe) -->
+  <!-- Inline-Script: Scanner mit Fallback -->
   <script type="module">
-    const el = {
+    const ui = {
       probe: document.getElementById('jsProbe'),
       pf: document.getElementById('preflightStatus'),
       status: document.getElementById('status'),
+      err: document.getElementById('errorBanner'),
       btnPre: document.getElementById('btnPreflight'),
       btnStart: document.getElementById('btnStart'),
       btnStop: document.getElementById('btnStop'),
@@ -91,52 +80,33 @@
       cntU: document.getElementById('cntUnique'),
       cntP: document.getElementById('cntPackets'),
       heartbeat: document.getElementById('heartbeat'),
-      devList: document.getElementById('devList'),
-      errorBanner: document.getElementById('errorBanner')
+      devList: document.getElementById('devList')
     };
-    if (el.probe) el.probe.textContent = 'JS-Modul geladen (Single-inline)';
+    if (ui.probe) ui.probe.textContent = 'JS-Modul geladen (Single-inline v1.6.1)';
 
     function showError(msg){
-      console.error(msg);
-      if(el.errorBanner){ el.errorBanner.style.display='block'; el.errorBanner.textContent='Fehler: '+msg; }
-      if(el.status){ el.status.textContent='Fehler: '+msg; }
+      console.error('[BLE]', msg);
+      if(ui.err){ ui.err.style.display='block'; ui.err.textContent='Fehler: '+msg; }
+      if(ui.status) ui.status.textContent = 'Fehler: ' + msg;
     }
+    function setPF(msg){ if(ui.pf) ui.pf.textContent = msg; if(ui.status) ui.status.textContent = msg; }
+    function setStatus(msg){ if(ui.status) ui.status.textContent = msg; }
+
     window.addEventListener('error', e=> showError(e.message||'Uncaught error'));
     window.addEventListener('unhandledrejection', e=> showError(e.reason?.message||'Promise rejected'));
 
-    let scanning = false;
-    let lastTs = 0;
-    const records = [];
-    const uniq = new Set();
-    let heartbeatTimer = null;
+    let scanning = false, lastTs = 0, records = [], uniq = new Set(), hbTimer=null, advCount=0, nativeHandle=null;
 
-    function setPF(msg){ if(el.pf) el.pf.textContent = msg; if(el.status) el.status.textContent = msg; }
-    function setStatus(msg){ if(el.status) el.status.textContent = msg; }
     function nowISO(){ return new Date().toISOString(); }
-
-    async function preflight(){
-      const okBLE  = !!(navigator.bluetooth && navigator.bluetooth.requestLEScan);
-      const okGeo  = !!navigator.geolocation;
-      const okWake = !!(navigator.wakeLock && navigator.wakeLock.request);
-      const msg = `Preflight: requestLEScan:${okBLE?'OK':'NEIN'} | Geolocation:${okGeo?'OK':'NEIN'} | WakeLock:${okWake?'OK':'NEIN'}`;
-      setPF(msg);
-      return okBLE;
-    }
-
     function deviceKey(name, uuids){
-      const n = (name||'∅').trim().toLowerCase();
-      const u = (Array.isArray(uuids)&&uuids[0])? uuids[0] : '∅';
+      const n=(name||'∅').trim().toLowerCase();
+      const u=(Array.isArray(uuids)&&uuids[0])? uuids[0] : '∅';
       return n+'|'+u;
     }
-    function hexFromView(view){
-      if(!view) return '';
-      let s=''; const v=new Uint8Array(view.buffer||view);
-      for(let i=0;i<v.length;i++){ s += v[i].toString(16).padStart(2,'0'); }
-      return s;
-    }
-    function listRender(){
-      if(!el.devList) return;
-      el.devList.innerHTML = '';
+    function hexFromView(view){ if(!view) return ''; let s='',v=new Uint8Array(view.buffer||view); for(let i=0;i<v.length;i++){ s+=v[i].toString(16).padStart(2,'0'); } return s; }
+    function renderList(){
+      if(!ui.devList) return;
+      ui.devList.innerHTML = '';
       const counts = new Map();
       for(const r of records){
         const k = deviceKey(r.deviceName, r.serviceUUIDs);
@@ -144,94 +114,73 @@
       }
       const items = Array.from(counts.entries()).sort((a,b)=>b[1]-a[1]).slice(0,50);
       for(const [k,c] of items){
-        const li = document.createElement('li');
-        li.innerHTML = `<div class="name">${k}</div><div class="meta">${c} Pakete</div>`;
-        el.devList.appendChild(li);
+        const li=document.createElement('li'); li.innerHTML=`<div class="name">${k}</div><div class="meta">${c} Pakete</div>`;
+        ui.devList.appendChild(li);
       }
     }
 
-    async function startScan(){
-      const ok = await preflight();
-      if(!ok) throw new Error('requestLEScan nicht verfügbar (Browser/Flags/Berechtigungen prüfen)');
-      const scan = await navigator.bluetooth.requestLEScan({
-        keepRepeatedDevices: true,
-        acceptAllAdvertisements: true
-      });
-      scanning = true;
-      setStatus('Scan läuft…');
-
-      function onAdv(e){
-        try{
-          const name = e.device && e.device.name || '';
-          const rssi = typeof e.rssi === 'number' ? e.rssi : null;
-          const tx  = typeof e.txPower === 'number' ? e.txPower : null;
-          const serviceUUIDs = Array.isArray(e.uuids) ? e.uuids.slice() : [];
-
-          const m = {};
-          if(e.manufacturerData && e.manufacturerData.forEach){
-            e.manufacturerData.forEach((val, key)=>{ m[String(key)] = hexFromView(val); });
-          }
-          const s = {};
-          if(e.serviceData && e.serviceData.forEach){
-            e.serviceData.forEach((val, key)=>{ s[String(key)] = hexFromView(val); });
-          }
-
-          const rec = {
-            timestamp: nowISO(),
-            deviceName: name || null,
-            serviceUUIDs,
-            rssi: (Number.isInteger(rssi)? rssi : (rssi!==null? Math.round(rssi): null)),
-            txPower: tx,
-            manufacturerData: m,
-            serviceData: s
-          };
-          records.push(rec);
-          lastTs = Date.now();
-
-          const k = deviceKey(rec.deviceName, rec.serviceUUIDs);
-          uniq.add(k);
-          if(el.cntU) el.cntU.textContent = String(uniq.size);
-          if(el.cntP) el.cntP.textContent = String(records.length);
-          listRender();
-        }catch(err){
-          console.error('Adv-Parse-Fehler', err);
-        }
-      }
-
-      navigator.bluetooth.addEventListener('advertisementreceived', onAdv);
-
-      // Heartbeat/Auto-Re-Subscribe
-      if(heartbeatTimer) clearInterval(heartbeatTimer);
-      heartbeatTimer = setInterval(()=>{
-        const silent = Math.floor((Date.now()-lastTs)/1000);
-        if(el.heartbeat) el.heartbeat.textContent = `letztes Paket vor ${silent}s`;
-        if(scanning && silent > 20){
-          try{ navigator.bluetooth.removeEventListener('advertisementreceived', onAdv); }catch(_){}
-          try{ navigator.bluetooth.requestLEScan({ keepRepeatedDevices:true, acceptAllAdvertisements:true }); }catch(_){}
-          lastTs = Date.now();
-        }
-      }, 1000);
-
-      // Stop nur einmal binden
-      el.btnStop?.addEventListener('click', async ()=>{
-        try{
-          scanning = false;
-          try{ navigator.bluetooth.removeEventListener('advertisementreceived', onAdv); }catch(_){}
-          try{ scan.stop && scan.stop(); }catch(_){}
-          if(heartbeatTimer){ clearInterval(heartbeatTimer); heartbeatTimer=null; }
-          setStatus('Scan gestoppt');
-        }catch(e){ setStatus('Stop-Fehler: '+e.message); }
-      }, { once:true });
+    async function preflight(){
+      const okBLE = !!(navigator.bluetooth && navigator.bluetooth.requestLEScan);
+      const okGeo = !!navigator.geolocation;
+      const okWake = !!(navigator.wakeLock && navigator.wakeLock.request);
+      const msg = `Preflight: requestLEScan:${okBLE?'OK':'NEIN'} | Geolocation:${okGeo?'OK':'NEIN'} | WakeLock:${okWake?'OK':'NEIN'}`;
+      console.log('[BLE] Preflight:', {okBLE,okGeo,okWake});
+      setPF(msg);
+      return okBLE;
     }
 
-    document.getElementById('btnPreflight')?.addEventListener('click', preflight);
-    document.getElementById('btnStart')?.addEventListener('click', async ()=>{
-      try{ await startScan(); } catch(e){ setStatus('Start-Fehler: '+e.message); }
-    });
-    document.getElementById('btnResync')?.addEventListener('click', async ()=>{
-      try{ await startScan(); } catch(e){ setStatus('Resync-Fehler: '+e.message); }
-    });
+    function startHB(){ stopHB(); hbTimer=setInterval(()=>{ const s=Math.floor((Date.now()-lastTs)/1000); if(ui.heartbeat) ui.heartbeat.textContent=`letztes Paket vor ${s}s • ${records.length} gesamt`; },1000);}
+    function stopHB(){ if(hbTimer){ clearInterval(hbTimer); hbTimer=null; } }
+
+    function onAdv(e){
+      advCount++;
+      const name=e.device?.name||''; const rssi=(typeof e.rssi==='number'?e.rssi:null); const tx=(typeof e.txPower==='number'?e.txPower:null);
+      const serviceUUIDs=Array.isArray(e.uuids)?e.uuids.slice():[];
+      const m={}; e.manufacturerData?.forEach((val,key)=>{m[String(key)]=hexFromView(val);});
+      const s={}; e.serviceData?.forEach((val,key)=>{s[String(key)]=hexFromView(val);});
+      const rec={ timestamp:nowISO(), deviceName:name||null, serviceUUIDs, rssi:(Number.isInteger(rssi)?rssi:(rssi!==null?Math.round(rssi):null)), txPower:tx, manufacturerData:m, serviceData:s };
+      records.push(rec); lastTs=Date.now();
+      uniq.add(deviceKey(rec.deviceName, rec.serviceUUIDs));
+      if(ui.cntU) ui.cntU.textContent=String(uniq.size);
+      if(ui.cntP) ui.cntP.textContent=String(records.length);
+      renderList();
+    }
+
+    async function startNative(){
+      console.log('[BLE] Starte requestLEScan() …');
+      const scan=await navigator.bluetooth.requestLEScan({keepRepeatedDevices:true,acceptAllAdvertisements:true});
+      nativeHandle=scan; navigator.bluetooth.addEventListener('advertisementreceived', onAdv);
+      scanning=true; advCount=0; lastTs=Date.now(); setStatus('Scan läuft (native)…'); startHB();
+      setTimeout(()=>{ if(scanning && advCount===0){ setStatus('Keine Pakete binnen 5s – Fallback verfügbar.'); ensureFallbackBtn(); } },5000);
+    }
+    async function startFallback(){
+      try{
+        console.log('[BLE] watchAdvertisements-Fallback…');
+        const dev=await navigator.bluetooth.requestDevice({acceptAllDevices:true, optionalServices:[]});
+        dev.addEventListener('advertisementreceived', onAdv);
+        await dev.watchAdvertisements();
+        scanning=true; setStatus('Fallback aktiv: '+(dev.name||'(ohne Name)')); startHB();
+      }catch(e){ showError('Fallback-Start fehlgeschlagen: '+e.message); }
+    }
+    function ensureFallbackBtn(){
+      if(document.getElementById('btnFallback')) return;
+      const btn=document.createElement('button'); btn.id='btnFallback'; btn.textContent='Fallback starten (watchAdvertisements)';
+      btn.style.margin='8px 16px'; btn.addEventListener('click', startFallback);
+      (ui.devList?.parentElement||document.body).insertBefore(btn, ui.devList);
+    }
+
+    async function stopAll(){
+      scanning=false;
+      try{ navigator.bluetooth.removeEventListener('advertisementreceived', onAdv); }catch(_){}
+      try{ nativeHandle&&nativeHandle.stop&&nativeHandle.stop(); }catch(_){}
+      stopHB(); setStatus('Scan gestoppt');
+    }
+
+    ui.btnPre?.addEventListener('click', preflight);
+    ui.btnStart?.addEventListener('click', async()=>{ try{ const ok=await preflight(); if(!ok) throw new Error('requestLEScan nicht verfügbar'); await stopAll(); await startNative(); }catch(e){ showError('Start-Fehler: '+e.message); }});
+    ui.btnStop?.addEventListener('click', stopAll);
+    ui.btnResync?.addEventListener('click', async()=>{ try{ await stopAll(); await startNative(); }catch(e){ showError('Resync-Fehler: '+e.message); }});
     document.addEventListener('DOMContentLoaded', preflight);
   </script>
 </body>
-</html>
+</html>      
