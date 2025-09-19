@@ -5,15 +5,14 @@
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <meta http-equiv="Content-Security-Policy" content="default-src 'self'; img-src 'self' data: https://*.tile.openstreetmap.org; style-src 'self' https://unpkg.com 'unsafe-inline'; script-src 'self' https://unpkg.com 'unsafe-inline'; connect-src 'self' blob:;"/>
   <title>BLE Scan – Fahrmodus</title>
-  <meta name="app-version" content="1.4.3"/>
+  <meta name="app-version" content="1.5.0"/>
   <link rel="manifest" href="./manifest.json" />
   <link rel="stylesheet" href="./styles.css" />
-  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"
-        integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY=" crossorigin="" />
+  <link rel="stylesheet" href="
 </head>
 <body>
   <header>
-    <h1>BLE Scan <span class="badge" id="modeBadge">Normalmodus</span> <small class="muted">v1.4.3</small></h1>
+    <h1>BLE Scan <span class="badge" id="modeBadge">Normalmodus</span> <small class="muted">v1.5.0</small></h1>
     <span id="jsProbe" class="badge muted">JS lädt…</span>
     <script>
       try {
@@ -56,9 +55,6 @@
     <input id="fRssiMax" type="number" placeholder="RSSI max (dBm)" />
     <input id="fFrom" type="datetime-local" />
     <input id="fTo" type="datetime-local" />
-    <label><input type="checkbox" id="fApple"/> Apple/Tracker</label>
-    <label><input type="checkbox" id="fFastPair"/> Fast Pair</label>
-    <label><input type="checkbox" id="fIndustrie"/> Industrie/FCF1</label>
     <button id="btnApplyFilters">Filter anwenden</button>
     <button id="btnClearFilters">Filter löschen</button>
   </section>
@@ -72,33 +68,49 @@
     </div>
   </section>
 
-  <section class="layout">
-    <div class="panel">
-      <h2>Letzte Scans</h2>
-      <div id="err" class="error hidden"></div>
-      <table id="tbl">
-        <thead>
-          <tr>
-            <th>Zeit</th>
-            <th>Gerät</th>
-            <th>UUIDs</th>
-            <th>RSSI</th>
-            <th>txP</th>
-            <th>Dist (m)</th>
-            <th>Lat</th>
-            <th>Lon</th>
-            <th>cnt</th>
-          </tr>
-        </thead>
-        <tbody id="tblBody"></tbody>
-      </table>
-      <div id="hiddenHint" class="hint"></div>
+  
+<section class="layout">
+  <div class="panel">
+    <h2>Geräte</h2>
+    <div class="hint">Eindeutige Geräte aus dem aktuellen Datenbestand. Klick für Details & Export.</div>
+    <div class="devlist-controls">
+      <input id="devSearch" placeholder="Suche (Name/UUID)…" />
+      <span class="muted" id="devCount">0 Geräte</span>
     </div>
-    <div class="panel">
-      <h2>Karte</h2>
-      <div id="map"></div>
+    <ul id="devList" class="devlist"></ul>
+  </div>
+  <div class="panel">
+    <h2>Analyse</h2>
+    <div id="analysisEmpty" class="hint">Kein Gerät ausgewählt. Wähle links ein Gerät aus.</div>
+    <div id="analysis" class="hidden">
+      <div class="analysis-header">
+        <div class="title"><span id="anaIcon">📡</span> <span id="anaName">–</span></div>
+        <div class="meta"><span id="anaCat">–</span> • <span id="anaVendor">–</span></div>
+      </div>
+      <div class="grid">
+        <div><label>Pakete</label><div id="anaPackets">0</div></div>
+        <div><label>Erste Sichtung</label><div id="anaFirst">–</div></div>
+        <div><label>Letzte Sichtung</label><div id="anaLast">–</div></div>
+        <div><label>RSSI Ø / Median</label><div id="anaRssiStats">–</div></div>
+        <div><label>Dist Ø / Median</label><div id="anaDistStats">–</div></div>
+      </div>
+      <div class="sparkline-block">
+        <canvas id="anaSpark" width="800" height="160"></canvas>
+      </div>
+      <div class="raw-block">
+        <h3>Rohdaten</h3>
+        <div id="anaRawKeys" class="muted"></div>
+        <pre id="anaRaw" class="debugjson"></pre>
+      </div>
+      <div class="export">
+        <button id="btnExportJSONOne">Export JSON (Gerät)</button>
+        <button id="btnExportCSVOne">Export CSV (Gerät)</button>
+        <button id="btnFilterOnly">Nur dieses Gerät filtern</button>
+      </div>
     </div>
-  </section>
+  </div>
+</section>
+
 
   <section class="export">
     <button id="btnExportJSON">Export JSON (alle)</button>
@@ -111,21 +123,7 @@
     <small>Offline-fähig (PWA). BLE-Scan nur in unterstützten Browsern und im Vordergrund. WakeLock hält das Display aktiv.</small>
   </footer>
 
-  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"
-          integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo=" crossorigin=""></script>
-  <script type="module" src="./js/main.js?v=1.4.3"></script>
-
-  <div id="modalRaw" class="modal hidden">
-    <div class="modal-content">
-      <button id="modalClose" class="modal-close">×</button>
-      <h3>Rohdaten</h3>
-      <pre id="modalPre"></pre>
-    </div>
-  </div>
+  <script src="</script>
+  <script type="module" src="./js/main.js?v=1.5.0"></script>
 </body>
 </html>
-
-  <section class="debug panel">
-    <h2>Debug-Rohdaten (letzte 10)</h2>
-    <div id="dbg"></div>
-  </section>
