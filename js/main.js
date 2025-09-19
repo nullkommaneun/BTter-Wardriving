@@ -1,4 +1,4 @@
-// js/main.js — Hybrid modular build
+// js/main.js — Hybrid modular build (v1.6.4+)
 import * as BLE from './ble.js';
 import * as DB from './storage.js';
 
@@ -18,50 +18,75 @@ const ui = {
   devList: document.getElementById('devList'),
   watchGrid: document.getElementById('watchGrid')
 };
+
 ui.probe.textContent = 'JS-Modul geladen (Hybrid modular)';
 
+// ---------- Utility / UI ----------
 function showError(msg){
   console.error('[BLE]', msg);
-  ui.err.style.display='block'; ui.err.textContent='Fehler: '+msg;
+  ui.err.style.display = 'block';
+  ui.err.textContent = 'Fehler: ' + msg;
   ui.status.textContent = 'Fehler: ' + msg;
 }
 function setPF(msg){ ui.pf.textContent = msg; ui.status.textContent = msg; }
 function setStatus(msg){ ui.status.textContent = msg; }
-window.addEventListener('error', e=> showError(e.message||'Uncaught error'));
-window.addEventListener('unhandledrejection', e=> showError(e.reason?.message||'Promise rejected'));
 
-let hbTimer=null, lastTs=0;
-const records=[];
-const uniq = new Set();
-const watchState = new Map(); // id -> { name, count, lastTs, active }
+window.addEventListener('error', e => showError(e.message || 'Uncaught error'));
+window.addEventListener('unhandledrejection', e => showError(e.reason?.message || 'Promise rejected'));
 
-function deviceKey(name, uuids){ const n=(name||'∅').trim().toLowerCase(); const u=(Array.isArray(uuids)&&uuids[0])?uuids[0]:'∅'; return n+'|'+u; }
+let hbTimer = null;
+let lastTs = 0;
 
+const records = [];                 // alle Pakete (global + watches)
+const uniq = new Set();             // unique deviceKey(name|uuid)
+const watchState = new Map();       // id -> { name, count, lastTs, active }
+
+function deviceKey(name, uuids){
+  const n = (name || '∅').trim().toLowerCase();
+  const u = (Array.isArray(uuids) && uuids[0]) ? uuids[0] : '∅';
+  return n + '|' + u;
+}
+
+// ---------- Rendering ----------
 function renderAggregates(){
-  ui.devList.innerHTML='';
+  ui.devList.innerHTML = '';
   const counts = new Map();
-  for(const r of records){
+  for (const r of records) {
     const k = deviceKey(r.deviceName, r.serviceUUIDs);
-    counts.set(k, (counts.get(k)||0)+1);
+    counts.set(k, (counts.get(k) || 0) + 1);
   }
-  const items = Array.from(counts.entries()).sort((a,b)=>b[1]-a[1]).slice(0,50);
-  for(const [k,c] of items){
-    const li=document.createElement('li');
-    li.innerHTML = `<div class="name">${k}</div><div class="meta">${c} Pakete</div>`;
+  const items = Array.from(counts.entries())
+    .sort((a,b) => b[1] - a[1])
+    .slice(0, 50);
+
+  for (const [k, c] of items) {
+    const [namePart, uuidPart = '∅'] = String(k).split('|');
+    const li = document.createElement('li');
+    li.innerHTML = `
+      <div class="row1">
+        <div class="name">${namePart || '(ohne Name)'}</div>
+        <div class="count">${c}×</div>
+      </div>
+      <div class="uuid">${uuidPart}</div>
+    `;
+    // Optional: Klick-Action, um daraus direkt einen Watch zu starten
+    li.title = 'Gerät beobachten (watchAdvertisements)';
+    li.style.cursor = 'pointer';
+    li.addEventListener('click', addWatch); // führt zur Geräteauswahl
     ui.devList.appendChild(li);
   }
 }
 
 function renderWatches(){
-  ui.watchGrid.innerHTML='';
-  for(const [id, w] of watchState){
+  ui.watchGrid.innerHTML = '';
+  for (const [id, w] of watchState) {
     const el = document.createElement('div');
-    el.className='watch';
+    el.className = 'watch';
     el.innerHTML = `
       <h3>${w.name || '(ohne Name)'} <span class="small">(${id})</span></h3>
       <div class="row"><span>Pakete</span><span>${w.count}</span></div>
-      <div class="row"><span>Letzte Sichtung</span><span>${w.lastTs?new Date(w.lastTs).toLocaleTimeString():'–'}</span></div>
-      <div class="small">Status: ${w.active?'aktiv':'gestoppt'}</div>
+      <div class="row"><span>Letzte Sichtung</span><span>${w.lastTs ? new Date(w.lastTs).toLocaleTimeString() : '–'}</span></div>
+      <div class="small">Status: ${w.active ? 'aktiv' : 'gestoppt'}</div>
       <div style="margin-top:8px"><button data-id="${id}" class="btnStopWatch">Watch stoppen</button></div>
     `;
     ui.watchGrid.appendChild(el);
@@ -70,82 +95,114 @@ function renderWatches(){
     btn.addEventListener('click', ()=>{
       const id = btn.getAttribute('data-id');
       BLE.stopWatch(id);
-      const w = watchState.get(id); if(w){ w.active=false; renderWatches(); }
+      const w = watchState.get(id);
+      if (w) { w.active = false; renderWatches(); }
     });
   });
 }
 
+// ---------- Preflight / Heartbeat ----------
 async function preflight(){
-  const okBLE = !!(navigator.bluetooth && navigator.bluetooth.requestLEScan);
-  const okGeo = !!navigator.geolocation;
+  const okBLE  = !!(navigator.bluetooth && navigator.bluetooth.requestLEScan);
+  const okGeo  = !!navigator.geolocation;
   const okWake = !!(navigator.wakeLock && navigator.wakeLock.request);
   const msg = `Preflight: requestLEScan:${okBLE?'OK':'NEIN'} | Geolocation:${okGeo?'OK':'NEIN'} | WakeLock:${okWake?'OK':'NEIN'}`;
-  setPF(msg); return okBLE;
+  setPF(msg);
+  return okBLE;
 }
 
-function startHB(){ stopHB(); hbTimer=setInterval(async ()=>{
-  const s = Math.floor((Date.now()-lastTs)/1000);
-  ui.heartbeat.textContent = `letztes Paket vor ${s}s • ${records.length} gesamt`;
-}, 1000); }
-function stopHB(){ if(hbTimer){ clearInterval(hbTimer); hbTimer=null; } }
+function startHB(){
+  stopHB();
+  hbTimer = setInterval(()=>{
+    const s = Math.floor((Date.now() - lastTs) / 1000);
+    ui.heartbeat.textContent = `letztes Paket vor ${s}s • ${records.length} gesamt`;
+  }, 1000);
+}
+function stopHB(){ if (hbTimer) { clearInterval(hbTimer); hbTimer = null; } }
 
+// ---------- Data ingest ----------
 BLE.setAdvertisementHandler(async (rec)=>{
   records.push(rec);
   lastTs = Date.now();
-  try{ await DB.putRecord(rec); }catch(_){ /* tolerieren */ }
+
+  // Persistenz (best effort)
+  try { await DB.putRecord(rec); } catch(_){ /* tolerieren */ }
+
+  // Aggregation
   uniq.add(deviceKey(rec.deviceName, rec.serviceUUIDs));
   ui.cntU.textContent = String(uniq.size);
   ui.cntP.textContent = String(records.length);
   renderAggregates();
-  // Watch-spezifisch zählen
-  if(rec.deviceId && watchState.has(rec.deviceId)){
+
+  // Watch-spezifische Zähler (beste Übereinstimmung über deviceId)
+  if (rec.deviceId && watchState.has(rec.deviceId)) {
     const w = watchState.get(rec.deviceId);
     w.count++; w.lastTs = Date.now();
     renderWatches();
   } else {
-    // Falls deviceId vom UA fehlt, erhöhe alle aktiven watches als best-effort
-    for(const [id,w] of watchState){ if(w.active){ w.count++; w.lastTs=Date.now(); } }
+    // Manche UAs liefern keine deviceId in Adv-Events → best-effort
+    for (const [id, w] of watchState) {
+      if (w.active) { w.count++; w.lastTs = Date.now(); }
+    }
     renderWatches();
   }
 });
 
+// ---------- Control actions ----------
 async function startGlobal(){
-  const ok = await preflight(); if(!ok) throw new Error('requestLEScan nicht verfügbar');
+  const ok = await preflight();
+  if (!ok) throw new Error('requestLEScan nicht verfügbar');
+
   await stopAll(false);
   await BLE.startGlobalScan();
+
   setStatus('Globaler Scan läuft…');
   startHB();
-  // 5s Stille -> Hinweis
+
+  // Hinweis, falls 5 s lang keine Pakete eintreffen
   const base = records.length;
-  setTimeout(()=>{ if(records.length===base){ setStatus('Keine globalen Pakete binnen 5s. Nutze Geräte-Watches als Workaround.'); } }, 5000);
+  setTimeout(()=>{
+    if (records.length === base) {
+      setStatus('Keine globalen Pakete binnen 5s. Nutze Geräte-Watches als Workaround.');
+    }
+  }, 5000);
 }
 
 async function addWatch(){
   try{
     const info = await BLE.addWatch();
-    if(!info) return;
-    watchState.set(info.id, { name: info.name, count:0, lastTs:0, active:true });
+    if (!info) return;
+    watchState.set(info.id, { name: info.name, count: 0, lastTs: 0, active: true });
     renderWatches();
-  }catch(e){ showError('Watch-Start fehlgeschlagen: '+e.message); }
+  }catch(e){
+    showError('Watch-Start fehlgeschlagen: ' + e.message);
+  }
 }
 
-async function stopAll(fromUser=true){
-  try{ BLE.stopGlobalScan(); }catch(_){}
-  // mark watches as stopped
-  for(const [id,w] of watchState){ try{ BLE.stopWatch(id); }catch(_){ } w.active=false; }
+async function stopAll(fromUser = true){
+  try { BLE.stopGlobalScan(); } catch(_){}
+  for (const [id, w] of watchState) {
+    try { BLE.stopWatch(id); } catch(_){}
+    w.active = false;
+  }
   renderWatches();
   stopHB();
-  if(fromUser) setStatus('Alle Scans gestoppt');
+  if (fromUser) setStatus('Alle Scans gestoppt');
 }
 
+// ---------- Event wiring ----------
 document.getElementById('btnPreflight').addEventListener('click', preflight);
-document.getElementById('btnStart').addEventListener('click', async()=>{ try{ await startGlobal(); }catch(e){ showError('Start-Fehler: '+e.message); }});
+document.getElementById('btnStart').addEventListener('click', async()=>{
+  try{ await startGlobal(); }catch(e){ showError('Start-Fehler: ' + e.message); }
+});
 document.getElementById('btnStop').addEventListener('click', ()=> stopAll(true));
-document.getElementById('btnResync').addEventListener('click', async()=>{ try{ await stopAll(false); await startGlobal(); }catch(e){ showError('Resync-Fehler: '+e.message); }});
+document.getElementById('btnResync').addEventListener('click', async()=>{
+  try{ await stopAll(false); await startGlobal(); }catch(e){ showError('Resync-Fehler: ' + e.message); }
+});
 document.getElementById('btnAddWatch').addEventListener('click', addWatch);
 
 document.addEventListener('DOMContentLoaded', async ()=>{
   ui.probe.textContent = 'JS-Modul geladen (Hybrid modular)';
-  try{ await DB.init(); }catch(_){}
+  try { await DB.init(); } catch(_){}
   await preflight();
-});
+}); 
