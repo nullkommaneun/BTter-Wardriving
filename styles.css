@@ -1,24 +1,64 @@
-:root { color-scheme: light dark; }
+:root {
+  color-scheme: light dark;
+  --bg: #0b0b0c;
+  --fg: #e9eef2;
+  --muted: #9aa6b2;
+  --card: #15181c;
+  --card-border: #2a3036;
+  --accent: #0ea5e9;
+}
+
+@media (prefers-color-scheme: light) {
+  :root {
+    --bg:#f7f9fc; --fg:#0b1220; --muted:#5b6570;
+    --card:#ffffff; --card-border:#d8dee6; --accent:#0b82b8;
+  }
+}
+
+html, body { background: var(--bg); color: var(--fg); }
 body { margin:0; font-family: system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif; }
-header { padding: 12px 16px; background:#0ea5e9; color:#002233; }
+
+header { padding: 12px 16px; background: var(--accent); color:#002233; }
 h1 { margin:0 0 6px 0; font-size:20px; display:flex; gap:.5rem; align-items:baseline; }
+
 .badge { background:#fff; color:#0b4b6b; border-radius:999px; padding:.1rem .5rem; font-size:12px; }
-.muted { opacity:.8; font-size:12px; }
+.muted { color: var(--muted); font-size:12px; }
 .error { display:none; background:#7f1d1d; color:#fff; padding:.5rem 1rem; font-weight:600; }
+
 .stats { display:flex; gap:18px; margin-top:8px; flex-wrap:wrap; }
 .stats div { display:flex; flex-direction:column; }
 .stats span { font-weight:700; font-size:18px; }
+
 .controls, .panel { padding:12px 16px; }
 .controls button { margin-right:8px; margin-bottom:8px; }
+
 .layout { display:grid; grid-template-columns: 1fr 1fr; gap:16px; padding:12px 16px; }
 @media (max-width: 900px){ .layout { grid-template-columns: 1fr; } }
+
+/* Geräte-Liste (lesbar in Dark/Light) */
 .devlist { list-style:none; padding:0; margin:8px 0 0 0; }
-.devlist li { padding:8px 10px; border:1px solid #ddd; border-radius:8px; margin-bottom:6px; background:#fff; }
-.devlist .name { font-weight:600; }
-.devlist .meta { font-size:12px; opacity:.8; }
+.devlist li {
+  background: var(--card);
+  color: var(--fg);
+  border: 1px solid var(--card-border);
+  border-radius: 10px;
+  padding: 10px 12px;
+  margin-bottom: 8px;
+}
+.devlist .row1 { display:flex; justify-content:space-between; gap:8px; align-items:center; }
+.devlist .name { font-weight:700; overflow-wrap:anywhere; }
+.devlist .count { font-variant-numeric: tabular-nums; opacity:.9; }
+.devlist .uuid { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; color: var(--muted); font-size:12px; margin-top:4px; }
+
+/* Watch-Karten */
 .watch-grid { display:grid; grid-template-columns: repeat(auto-fit,minmax(240px,1fr)); gap:10px; }
-.watch { border:1px solid #ddd; border-radius:10px; padding:10px; background:#fff; }
+.watch {
+  background: var(--card);
+  color: var(--fg);
+  border:1px solid var(--card-border);
+  border-radius:10px; padding:10px;
+}
 .watch h3 { margin:0 0 6px 0; font-size:14px; }
-.watch .small { font-size:12px; opacity:.8; }
+.watch .small { font-size:12px; color: var(--muted); }
 .watch .row { display:flex; justify-content:space-between; margin:4px 0; }
-.hint { font-size:12px; opacity:.8; }
+.hint { font-size:12px; color: var(--muted); }
