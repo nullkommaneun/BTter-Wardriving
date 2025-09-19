@@ -14,7 +14,6 @@ export async function init(){
 }
 
 export function update(rows){
-  try{ window.__lastRows = rows; }catch{}
   if(!map) return;
   markersLayer.clearLayers();
   for(const r of rows){
@@ -23,8 +22,7 @@ export function update(rows){
       const name = (r.icon||'') + ' ' + (r.deviceName||'');
       const uu = (r.serviceUUIDs||[]).join(';');
       const cnt = r.count ?? '';
-      const idx = rows.indexOf(r);
-      const html = `<b>${name}</b><br/>${new Date(r.timestamp).toLocaleString()}<br/>RSSI: ${r.rssi} txP:${r.txPower ?? ''} d≈${r.distanceM ?? ''}m<br/>UUIDs: ${uu}<br/>Count(5s): ${cnt}<br/><button onclick=\"window.__showRaw(${idx})\">Rohdaten</button>`;
+      const html = `<b>${name}</b><br/>${new Date(r.timestamp).toLocaleString()}<br/>RSSI: ${r.rssi} txP:${r.txPower ?? ''} d≈${r.distanceM ?? ''}m<br/>UUIDs: ${uu}<br/>Count(5s): ${cnt}`;
       m.bindPopup(html);
       markersLayer.addLayer(m);
     }

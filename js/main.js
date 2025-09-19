@@ -1,7 +1,6 @@
 import * as BLE from './ble.js';
 import * as GEO from './geo.js';
 import * as DB from './storage.js';
-import * as MAP from './map.js';
 import * as FIL from './filters.js';
 import * as EXP from './export.js';
 import * as CLU from './cluster.js';
@@ -43,7 +42,7 @@ const appState = {
   rateBuffer: [],
   lastTick: 0,
   preflightOk: false,
-  filters: { name:'', rssiMin:-80, rssiMax:null, from:null, to:null, apple:false, fastpair:false, industrie:false },
+  filters: { name:'', rssiMin:-80, rssiMax:null, from:null, to:null },
   wakeLock: null,
   pathLossN: 2.0,
   lastPacketIso: null,
@@ -83,30 +82,8 @@ const el = {
   btnExportCSV: document.getElementById('btnExportCSV'),
   btnExportCSVFiltered: document.getElementById('btnExportCSVFiltered'),
   btnExportCSVCluster: document.getElementById('btnExportCSVCluster'),
-  fApple: document.getElementById('fApple'),
-  fFastPair: document.getElementById('fFastPair'),
-  fIndustrie: document.getElementById('fIndustrie'),
-  dbg: document.getElementById('dbg'),
-  modal: document.getElementById('modalRaw'),
-  modalPre: document.getElementById('modalPre'),
-  modalClose: document.getElementById('modalClose'),
   pathLossN: document.getElementById('pathLossN'),
 };
-
-
-// Modal raw display
-window.__showRaw = (i)=>{
-  try{
-    const rows = window.__lastRows || [];
-    const r = rows[i];
-    if(!r) return;
-    const raw = { timestamp: r.timestamp, name: r.deviceName, category: r.category, vendor: r.vendor, rssi: r.rssi, txPower: r.txPower, distanceM: r.distanceM, beaconType: r.beaconType, manufacturerData: r.manufacturerData, serviceData: r.serviceData };
-    if(el.modalPre) el.modalPre.textContent = JSON.stringify(raw, null, 2);
-    el.modal?.classList.remove('hidden');
-  }catch(e){ console.error(e); }
-};
-el.modalClose?.addEventListener('click', ()=> el.modal?.classList.add('hidden'));
-el.modal?.addEventListener('click', (ev)=>{ if(ev.target===el.modal) el.modal.classList.add('hidden'); });
 
 // Helpers
 const nowIso = () => new Date().toISOString();
@@ -131,13 +108,6 @@ function updateStats(){
 }
 function showError(msg){ const e = document.getElementById('err'); if(!e) return; e.textContent = msg||''; e.classList.toggle('hidden', !msg); }
 
-function distanceClass(rssi){
-  if(!Number.isFinite(rssi)) return 'unklar';
-  if(rssi >= -65) return 'nah';
-  if(rssi >= -80) return 'mittel';
-  return 'fern';
-}
-
 function estDistance(rssi, txPower, n){
   if(!Number.isFinite(rssi)) return null;
   const ref = Number.isFinite(txPower) ? txPower : -59;
@@ -155,19 +125,6 @@ function ema(prev, x, alpha=0.3){
 }
 
 // Rendering
-
-async function renderDebug(){
-  if(!el.dbg) return;
-  const all = await DB.getAllRecords();
-  const last = all.slice(-10).reverse();
-  const pretty = last.map(r => {
-    const mfgKeys = Object.keys(r.manufacturerData||{}).join(', ');
-    const svcKeys = Object.keys(r.serviceData||{}).join(', ');
-    return { time: r.timestamp, name: r.deviceName||'', cat: r.category||'', vendor: r.vendor||'', rssi: r.rssi, txP: r.txPower, dist: r.distanceM, beacon: r.beaconType||'', mfgKeys, svcKeys, mfg: r.manufacturerData||{}, svc: r.serviceData||{} };
-  });
-  el.dbg.innerHTML = '<pre class="debugjson">'+JSON.stringify(pretty, null, 2)+'</pre>';
-}
-
 function renderTable(records){
   const maxRows = 5;
   el.tblBody.innerHTML = '';
@@ -181,7 +138,7 @@ function renderTable(records){
       <td>${(r.serviceUUIDs||[]).join(';')}</td>
       <td>${r.rssi ?? ''}</td>
       <td>${r.txPower ?? ''}</td>
-      <td>${r.distanceM ?? ''}</td><td>${distanceClass(r.rssi)}</td>
+      <td>${r.distanceM ?? ''}</td>
       <td>${r.latitude ?? ''}</td>
       <td>${r.longitude ?? ''}</td>
       <td>${r.count ?? ''}</td>`;
@@ -212,8 +169,175 @@ async function refreshUI(){
   const rows = await getFiltered();
   const clustered = appState.cluster ? CLU.cluster5s(rows, appState.pathLossN) : rows;
   renderTable(clustered);
-  renderDebug();
-  updateMapThrottled(clustered);
+  devicesIndex = summarizeDevices(clustered);
+  renderDevList();
+  
+}
+
+
+// ==== Geräte-Analyse ====
+const devEl = {
+  list: document.getElementById('devList'),
+  search: document.getElementById('devSearch'),
+  count: document.getElementById('devCount'),
+  anaWrap: document.getElementById('analysis'),
+  anaEmpty: document.getElementById('analysisEmpty'),
+  anaIcon: document.getElementById('anaIcon'),
+  anaName: document.getElementById('anaName'),
+  anaCat: document.getElementById('anaCat'),
+  anaVendor: document.getElementById('anaVendor'),
+  anaPackets: document.getElementById('anaPackets'),
+  anaFirst: document.getElementById('anaFirst'),
+  anaLast: document.getElementById('anaLast'),
+  anaRssiStats: document.getElementById('anaRssiStats'),
+  anaDistStats: document.getElementById('anaDistStats'),
+  anaRawKeys: document.getElementById('anaRawKeys'),
+  anaRaw: document.getElementById('anaRaw'),
+  spark: document.getElementById('anaSpark'),
+  btnExportJSONOne: document.getElementById('btnExportJSONOne'),
+  btnExportCSVOne: document.getElementById('btnExportCSVOne'),
+  btnFilterOnly: document.getElementById('btnFilterOnly'),
+};
+
+let devicesIndex = new Map();
+let selectedKey = null;
+
+function keyOf(rec){
+  const n = (rec.deviceName || '∅').trim().toLowerCase();
+  const u = (rec.serviceUUIDs && rec.serviceUUIDs[0]) ? rec.serviceUUIDs[0] : '∅';
+  return n + '|' + u;
+}
+
+function summarizeDevices(rows){
+  const map = new Map();
+  for(const r of rows){
+    const k = keyOf(r);
+    let entry = map.get(k);
+    if(!entry){
+      entry = {
+        key:k, name: r.deviceName || '(ohne Name)',
+        icon: r.icon || '📡',
+        category: r.category || '',
+        vendor: r.vendor || '',
+        first: r.timestamp, last: r.timestamp,
+        count: 0,
+        rssiVals: [], distVals: [],
+        uuids: new Set(),
+        lastRaw: { manufacturerData: r.manufacturerData || {}, serviceData: r.serviceData || {} },
+        samples: []
+      };
+      map.set(k, entry);
+    }
+    entry.count++;
+    entry.last = r.timestamp;
+    if(entry.first > r.timestamp) entry.first = r.timestamp;
+    if(Number.isFinite(r.rssi)) entry.rssiVals.push(r.rssi);
+    if(Number.isFinite(r.distanceM)) entry.distVals.push(r.distanceM);
+    (r.serviceUUIDs||[]).forEach(u=> entry.uuids.add(u));
+    entry.lastRaw = { manufacturerData: r.manufacturerData || {}, serviceData: r.serviceData || {} };
+    entry.samples.push({ ts: r.timestamp, rssi: r.rssi, dist: r.distanceM });
+  }
+  return map;
+}
+
+function median(arr){ if(!arr.length) return null; const a=arr.slice().sort((x,y)=>x-y); const m=Math.floor(a.length/2); return a.length%2? a[m] : (a[m-1]+a[m])/2; }
+function mean(arr){ if(!arr.length) return null; return arr.reduce((a,b)=>a+b,0)/arr.length; }
+
+function renderDevList(){
+  const filterText = (devEl.search?.value || '').toLowerCase();
+  const items = Array.from(devicesIndex.values()).filter(it=>{
+    if(!filterText) return true;
+    const uu = Array.from(it.uuids).join(';').toLowerCase();
+    return (it.name||'').toLowerCase().includes(filterText) || uu.includes(filterText);
+  }).sort((a,b)=> b.count - a.count);
+  devEl.list.innerHTML = '';
+  for(const it of items){
+    const li = document.createElement('li');
+    li.innerHTML = `<div class="name"><span>${it.icon}</span><span>${it.name}</span></div><div class="meta"><span class="count">${it.count}</span> • ${(it.category||'')}</div>`;
+    li.addEventListener('click', ()=> selectDevice(it.key));
+    devEl.list.appendChild(li);
+  }
+  devEl.count.textContent = `${items.length} Geräte`;
+}
+
+function selectDevice(key){
+  selectedKey = key;
+  const it = devicesIndex.get(key);
+  if(!it) return;
+  devEl.anaEmpty?.classList.add('hidden');
+  devEl.anaWrap?.classList.remove('hidden');
+  devEl.anaIcon.textContent = it.icon || '📡';
+  devEl.anaName.textContent = it.name || '(ohne Name)';
+  devEl.anaCat.textContent = it.category || '–';
+  devEl.anaVendor.textContent = it.vendor || '–';
+  devEl.anaPackets.textContent = String(it.count);
+  devEl.anaFirst.textContent = new Date(it.first).toLocaleString();
+  devEl.anaLast.textContent = new Date(it.last).toLocaleString();
+  const rssiAvg = mean(it.rssiVals); const rssiMed = median(it.rssiVals);
+  devEl.anaRssiStats.textContent = (rssiAvg!==null? Math.round(rssiAvg):'–') + ' / ' + (rssiMed!==null? Math.round(rssiMed):'–') + ' dBm';
+  const distAvg = mean(it.distVals); const distMed = median(it.distVals);
+  devEl.anaDistStats.textContent = (distAvg!==null? distAvg.toFixed(1):'–') + ' / ' + (distMed!==null? distMed.toFixed(1):'–') + ' m';
+  const mKeys = Object.keys(it.lastRaw.manufacturerData||{}).join(', ') || '–';
+  const sKeys = Object.keys(it.lastRaw.serviceData||{}).join(', ') || '–';
+  devEl.anaRawKeys.textContent = `Hersteller: ${mKeys} • Services: ${sKeys}`;
+  devEl.anaRaw.textContent = JSON.stringify(it.lastRaw, null, 2);
+  drawSpark(it.samples);
+
+  devEl.btnExportJSONOne?.onclick = async ()=>{
+    const rows = await DB.getAllRecords();
+    const filtered = rows.filter(r => keyOf(r) === key);
+    const ts = new Date().toISOString().replace(/:/g,'-');
+    const blob = new Blob([JSON.stringify(filtered, null, 2)], { type:'application/json' });
+    const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = `device_${sanitize(it.name)}_${ts}.json`; a.click();
+  };
+  devEl.btnExportCSVOne?.onclick = async ()=>{
+    const rows = await DB.getAllRecords();
+    const filtered = rows.filter(r => keyOf(r) === key);
+    const header = ['timestamp','deviceName','serviceUUIDs','rssi','txPower','distanceM','latitude','longitude','sessionId','category','vendor','icon'];
+    const lines = [header.join(',')];
+    for(const r of filtered){
+      const uu = (r.serviceUUIDs||[]).join(';');
+      const vals = [r.timestamp, r.deviceName||'', uu, r.rssi??'', r.txPower??'', r.distanceM??'', r.latitude??'', r.longitude??'', r.sessionId||'', r.category||'', r.vendor||'', r.icon||''];
+      lines.push(vals.map(v => String(v).replace(/"/g,'""')).map(v=>`"${v}"`).join(','));
+    }
+    const ts = new Date().toISOString().replace(/:/g,'-');
+    const blob = new Blob([lines.join('\n')], { type:'text/csv' });
+    const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = `device_${sanitize(it.name)}_${ts}.csv`; a.click();
+  };
+  devEl.btnFilterOnly?.onclick = ()=>{
+    if(el.fName) el.fName.value = it.name || '';
+    appState.filters.name = it.name || '';
+    refreshUI();
+  };
+}
+
+function sanitize(s){ return (s||'').replace(/[^a-z0-9-_]+/gi,'_').slice(0,60); }
+
+function drawSpark(samples){
+  const c = devEl.spark;
+  if(!c) return;
+  const ctx = c.getContext('2d');
+  ctx.clearRect(0,0,c.width,c.height);
+  if(!samples.length) return;
+  const N = Math.min(200, samples.length);
+  const arr = samples.slice(-N);
+  const xs = arr.map(x=> new Date(x.ts).getTime());
+  const ys = arr.map(x=> (Number.isFinite(x.rssi)? x.rssi : -100));
+  const minX = Math.min(...xs), maxX = Math.max(...xs);
+  const minY = Math.min(...ys), maxY = Math.max(...ys);
+  const pad = 8;
+  const w = c.width, h = c.height;
+  function xmap(v){ return pad + (w-2*pad) * ( (v-minX) / Math.max(1, maxX-minX) ); }
+  function ymap(v){ return pad + (h-2*pad) * ( ( (v - maxY) / Math.max(1, maxY-minY) ) ); }
+  ctx.lineWidth = 1.5;
+  ctx.beginPath();
+  arr.forEach((p,i)=>{
+    const x = xmap(new Date(p.ts).getTime());
+    const y = ymap(Number.isFinite(p.rssi)? p.rssi : -100);
+    if(i===0) ctx.moveTo(x,y); else ctx.lineTo(x,y);
+  });
+  ctx.strokeStyle = '#38bdf8';
+  ctx.stroke();
 }
 
 // Ingest
@@ -314,7 +438,7 @@ if(el.toggleDrive){
       GEO.setRate('normal');
       await releaseWakeLock();
       await refreshUI();
-      MAP.fitToData();
+      /* map removed */
     }
   });
 }
@@ -326,9 +450,6 @@ if(el.toggleCluster){
 if(el.btnApplyFilters){
   el.btnApplyFilters.addEventListener('click', ()=>{
     appState.filters = {
-      apple: !!el.fApple?.checked,
-      fastpair: !!el.fFastPair?.checked,
-      industrie: !!el.fIndustrie?.checked,
       name: el.fName?.value.trim() || '',
       rssiMin: el.fRssiMin?.value !== '' ? Number(el.fRssiMin.value) : appState.filters.rssiMin,
       rssiMax: el.fRssiMax?.value !== '' ? Number(el.fRssiMax.value) : null,
@@ -348,10 +469,7 @@ if(el.btnClearFilters){
     if(el.fFrom) el.fFrom.value='';
     if(el.fTo) el.fTo.value='';
     if(el.pathLossN) el.pathLossN.value='2.0';
-    appState.filters = {
-      apple: !!el.fApple?.checked,
-      fastpair: !!el.fFastPair?.checked,
-      industrie: !!el.fIndustrie?.checked, name:'', rssiMin:-80, rssiMax:null, from:null, to:null };
+    appState.filters = { name:'', rssiMin:-80, rssiMax:null, from:null, to:null };
     appState.pathLossN = 2.0;
     refreshUI();
   });
@@ -400,18 +518,9 @@ setInterval(async ()=>{
   const silentMs = Date.now() - appState.lastAdvTs;
   const thr = appState.driveMode ? 12000 : 20000;
   if(appState.preflightOk && silentMs > thr){
-    // Tier-1 watchdog (quick restart)
     console.warn('Watchdog: keine Advertisements seit', silentMs, 'ms → Restart Scan');
     try{ await BLE.stopScan(); }catch{}
     try{ await BLE.startScan(); }catch(e){ console.warn('Restart failed', e); }
-    appState.lastAdvTs = Date.now();
-  }
-  // Tier-2 hard auto-resync after 60s inactivity
-  if(appState.preflightOk && silentMs > 60000){
-    try{ await import('./storage.js').then(m=>m.flushNow && m.flushNow()); }catch{}
-    try{ await BLE.stopScan(); }catch{}
-    await new Promise(r=>setTimeout(r, 300));
-    try{ await BLE.startScan(); if(el.status) el.status.textContent = 'Auto-Resync nach Inaktivität…'; }catch(e){ console.warn('Hard resync failed', e); }
     appState.lastAdvTs = Date.now();
   }
 }, 5000);
@@ -452,7 +561,7 @@ async function releaseWakeLock(){
     resetRate();
     await diagnostics();
     const ok = await preflight();
-    try{ await MAP.init(); }catch(e){ console.error(e); showError('Karte konnte nicht initialisiert werden. Prüfe CSP/Netzwerk.'); }
+    try{ /* map removed */ }catch(e){ console.error(e); showError('Karte konnte nicht initialisiert werden. Prüfe CSP/Netzwerk.'); }
     await DB.init();
     await GEO.init();
     SES.init();
