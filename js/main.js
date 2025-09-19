@@ -20,9 +20,9 @@ async function diagnostics(){
   const ua = navigator.userAgent;
   add('Browser', true, ua);
   add('navigator.bluetooth', !!navigator.bluetooth);
-  add('requestLEScan', !!(navigator.bluetooth && navigator.bluetooth.requestLEScan));
+  add('requestLEScan', !!(navigator.bluetooth && navigator.bluetooth.requestLEScan);
   add('Geolocation', !!navigator.geolocation);
-  add('WakeLock', !!(navigator.wakeLock && navigator.wakeLock.request));
+  add('WakeLock', !!(navigator.wakeLock && navigator.wakeLock.request);
   try{
     const perms = navigator.permissions;
     if(perms && perms.query){
@@ -110,24 +110,24 @@ function deviceKey(name, uuids){
 function updateStats(){
   el.unique.textContent = String(appState.uniqueSet.size);
   el.packets.textContent = String(appState.packetCount);
-  el.rate.textContent = String(getRate());
+  el.rate.textContent = String(getRate();
   el.lastPkt.textContent = appState.lastPacketIso ? new Date(appState.lastPacketIso).toLocaleTimeString() : '–';
 }
 function showError(msg){ const e = document.getElementById('err'); if(!e) return; e.textContent = msg||''; e.classList.toggle('hidden', !msg); }
 
 function estDistance(rssi, txPower, n){
-  if(!Number.isFinite(rssi)) return null;
+  if(!Number.isFinite(rssi) return null;
   const ref = Number.isFinite(txPower) ? txPower : -59;
-  const N = Number.isFinite(n) ? Math.max(1.0, Math.min(4.0, n)) : 2.0;
-  const d = Math.pow(10, (ref - rssi)/(10*N));
-  const clamped = Math.max(0.1, Math.min(50, d));
-  return Number.isFinite(clamped) ? Number(clamped.toFixed(2)) : null;
+  const N = Number.isFinite(n) ? Math.max(1.0, Math.min(4.0, n) : 2.0;
+  const d = Math.pow(10, (ref - rssi)/(10*N);
+  const clamped = Math.max(0.1, Math.min(50, d);
+  return Number.isFinite(clamped) ? Number(clamped.toFixed(2) : null;
 }
 
 
 function ema(prev, x, alpha=0.3){
-  if(!Number.isFinite(x)) return prev ?? null;
-  if(!Number.isFinite(prev)) return x;
+  if(!Number.isFinite(x) return prev ?? null;
+  if(!Number.isFinite(prev) return x;
   return (1-alpha)*prev + alpha*x;
 }
 
@@ -238,9 +238,9 @@ function summarizeDevices(rows){
     entry.count++;
     entry.last = r.timestamp;
     if(entry.first > r.timestamp) entry.first = r.timestamp;
-    if(Number.isFinite(r.rssi)) entry.rssiVals.push(r.rssi);
-    if(Number.isFinite(r.distanceM)) entry.distVals.push(r.distanceM);
-    (r.serviceUUIDs||[]).forEach(u=> entry.uuids.add(u));
+    if(Number.isFinite(r.rssi) entry.rssiVals.push(r.rssi);
+    if(Number.isFinite(r.distanceM) entry.distVals.push(r.distanceM);
+    (r.serviceUUIDs||[]).forEach(u=> entry.uuids.add(u);
     entry.lastRaw = { manufacturerData: r.manufacturerData || {}, serviceData: r.serviceData || {} };
     entry.samples.push({ ts: r.timestamp, rssi: r.rssi, dist: r.distanceM });
   }
@@ -252,7 +252,7 @@ function mean(arr){ if(!arr.length) return null; return arr.reduce((a,b)=>a+b,0)
 
 function renderDevList(){
   const filterText = (devEl.search?.value || '').toLowerCase();
-  const items = Array.from(devicesIndex.values()).filter(it=>{
+  const items = Array.from(devicesIndex.values().filter(it=>{
     if(!filterText) return true;
     const uu = Array.from(it.uuids).join(';').toLowerCase();
     return (it.name||'').toLowerCase().includes(filterText) || uu.includes(filterText);
@@ -261,7 +261,7 @@ function renderDevList(){
   for(const it of items){
     const li = document.createElement('li');
     li.innerHTML = `<div class="name"><span>${it.icon}</span><span>${it.name}</span></div><div class="meta"><span class="count">${it.count}</span> • ${(it.category||'')}</div>`;
-    li&& onSafe, ()=> selectDevice(it.key));
+    li&& onSafe, ()=> selectDevice(it.key);
     devEl.list.appendChild(li);
   }
   devEl.count.textContent = `${items.length} Geräte`;
@@ -305,7 +305,7 @@ function selectDevice(key){
     for(const r of filtered){
       const uu = (r.serviceUUIDs||[]).join(';');
       const vals = [r.timestamp, r.deviceName||'', uu, r.rssi??'', r.txPower??'', r.distanceM??'', r.latitude??'', r.longitude??'', r.sessionId||'', r.category||'', r.vendor||'', r.icon||''];
-      lines.push(vals.map(v => String(v).replace(/"/g,'""')).map(v=>`"${v}"`).join(','));
+      lines.push(vals.map(v => String(v).replace(/"/g,'""').map(v=>`"${v}"`).join(',');
     }
     const ts = new Date().toISOString().replace(/:/g,'-');
     const blob = new Blob([lines.join('\n')], { type:'text/csv' });
@@ -328,18 +328,18 @@ function drawSpark(samples){
   if(!samples.length) return;
   const N = Math.min(200, samples.length);
   const arr = samples.slice(-N);
-  const xs = arr.map(x=> new Date(x.ts).getTime());
-  const ys = arr.map(x=> (Number.isFinite(x.rssi)? x.rssi : -100));
+  const xs = arr.map(x=> new Date(x.ts).getTime();
+  const ys = arr.map(x=> (Number.isFinite(x.rssi)? x.rssi : -100);
   const minX = Math.min(...xs), maxX = Math.max(...xs);
   const minY = Math.min(...ys), maxY = Math.max(...ys);
   const pad = 8;
   const w = c.width, h = c.height;
-  function xmap(v){ return pad + (w-2*pad) * ( (v-minX) / Math.max(1, maxX-minX) ); }
-  function ymap(v){ return pad + (h-2*pad) * ( ( (v - maxY) / Math.max(1, maxY-minY) ) ); }
+  function xmap(v){ return pad + (w-2*pad) * ( (v-minX) / Math.max(1, maxX-minX); }
+  function ymap(v){ return pad + (h-2*pad) * ( ( (v - maxY) / Math.max(1, maxY-minY) ); }
   ctx.lineWidth = 1.5;
   ctx.beginPath();
   arr.forEach((p,i)=>{
-    const x = xmap(new Date(p.ts).getTime());
+    const x = xmap(new Date(p.ts).getTime();
     const y = ymap(Number.isFinite(p.rssi)? p.rssi : -100);
     if(i===0) ctx.moveTo(x,y); else ctx.lineTo(x,y);
   });
@@ -365,21 +365,21 @@ async function ingest(evt){
     serviceData: DEC.svcToObject(evt.serviceData),
     ...DEC.decode(evt.manufacturerData, evt.serviceData)
   };
-  base.distanceM = estDistance(Number.isFinite(appState.rssiEma.get(deviceKey(base.deviceName, base.serviceUUIDs))) ? Math.round(appState.rssiEma.get(deviceKey(base.deviceName, base.serviceUUIDs))) : base.rssi, base.txPower, appState.pathLossN);
+  base.distanceM = estDistance(Number.isFinite(appState.rssiEma.get(deviceKey(base.deviceName, base.serviceUUIDs)) ? Math.round(appState.rssiEma.get(deviceKey(base.deviceName, base.serviceUUIDs)) : base.rssi, base.txPower, appState.pathLossN);
   const key = deviceKey(base.deviceName, base.serviceUUIDs);
   const prev = appState.rssiEma.get(key);
   const sm = ema(prev, base.rssi);
-  if(Number.isFinite(sm)) appState.rssiEma.set(key, sm);
+  if(Number.isFinite(sm) appState.rssiEma.set(key, sm);
   let prof = PRO.profileDevice(base.deviceName, base.serviceUUIDs);
   let record = { ...base, ...prof, rssiSmoothed: Number.isFinite(sm)? Math.round(sm): null };
   const fb = PRO.fallbackProfileByDecoded(record);
   record = { ...record, ...fb };
 
-  if(record.timestamp && Array.isArray(record.serviceUUIDs) && Number.isInteger(record.rssi)){
+  if(record.timestamp && Array.isArray(record.serviceUUIDs) && Number.isInteger(record.rssi){
     await DB.addRecord(record);
     appState.packetCount++;
-    appState.uniqueSet.add(deviceKey(record.deviceName, record.serviceUUIDs));
-    pushRate(Date.now());
+    appState.uniqueSet.add(deviceKey(record.deviceName, record.serviceUUIDs);
+    pushRate(Date.now();
     appState.lastPacketIso = record.timestamp;
     updateStats();
   }
@@ -536,7 +536,7 @@ setInterval(async ()=>{
 document.addEventListener('visibilitychange', async ()=>{
   if(document.visibilityState === 'visible' && appState.preflightOk){
     try{ await EXP; }catch{}
-    try{ await import('./storage.js').then(m=>m.flushNow && m.flushNow()); }catch{}
+    try{ await import('./storage.js').then(m=>m.flushNow && m.flushNow(); }catch{}
     try{ await BLE.stopScan(); }catch{}
     try{ await BLE.startScan(); }catch(e){ console.warn('Resubscribe failed', e); }
   }
