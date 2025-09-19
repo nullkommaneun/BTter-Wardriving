@@ -9,6 +9,10 @@ import * as SES from './session.js';
 import * as DEC from './parse.js';
 
 // Diagnostics
+const errBanner = document.getElementById('errorBanner');
+window.addEventListener('error', (e)=>{ console.error('Uncaught', e.error || e.message); if(errBanner){ errBanner.style.display='block'; errBanner.textContent = 'Fehler: '+(e.message||'unbekannt'); } });
+window.addEventListener('unhandledrejection', (e)=>{ console.error('Unhandled rejection', e.reason); if(errBanner){ errBanner.style.display='block'; errBanner.textContent = 'Fehler: '+(e.reason?.message||'Promise abgelehnt'); } });
+
 async function diagnostics(){
   const pf = [];
   const add = (name, ok, info='') => pf.push({name, ok, info});
@@ -86,6 +90,9 @@ const el = {
 };
 
 // Helpers
+function onSafe(el, ev, fn, opts){ if(el && el.addEventListener){ el.addEventListener(ev, fn, opts); } }
+
+// Helpers
 const nowIso = () => new Date().toISOString();
 const clampRateWindowMs = 60_000;
 function resetRate() { appState.rateBuffer.length = 0; appState.lastTick = performance.now(); }
@@ -158,10 +165,10 @@ async function getFiltered(){
 function updateMapThrottled(rows){
   const now = Date.now();
   if(!appState.driveMode){
-    MAP.update(rows); appState.lastMapUpdate = now; return;
+    /* map removed call */ appState.lastMapUpdate = now; return;
   }
   if(now - appState.lastMapUpdate > 3000){
-    MAP.update(rows); appState.lastMapUpdate = now;
+    /* map removed call */ appState.lastMapUpdate = now;
   }
 }
 
@@ -254,7 +261,7 @@ function renderDevList(){
   for(const it of items){
     const li = document.createElement('li');
     li.innerHTML = `<div class="name"><span>${it.icon}</span><span>${it.name}</span></div><div class="meta"><span class="count">${it.count}</span> • ${(it.category||'')}</div>`;
-    li.addEventListener('click', ()=> selectDevice(it.key));
+    li&& onSafe, ()=> selectDevice(it.key));
     devEl.list.appendChild(li);
   }
   devEl.count.textContent = `${items.length} Geräte`;
@@ -385,7 +392,7 @@ BLE.onAdvertisement(async (ad) => {
 
 // UI Events
 if(el.btnPreflight){
-  el.btnPreflight.addEventListener('click', async ()=>{
+  el.btnPreflight&& onSafe, async ()=>{
     try{
       const report = await diagnostics();
       const okScan = report.find(r=>r.name==='requestLEScan')?.ok;
@@ -398,7 +405,7 @@ if(el.btnPreflight){
 }
 
 if(el.btnStart){
-  el.btnStart.addEventListener('click', async ()=>{
+  el.btnStart&& onSafe, async ()=>{
     try{
       await DB.init();
       await GEO.init();
@@ -414,10 +421,10 @@ if(el.btnStart){
   });
 }
 
-if(el.btnResync){ el.btnResync.addEventListener('click', async ()=>{ try{ await BLE.stopScan(); }catch{} try{ await BLE.startScan(); }catch(e){ showError('Resync fehlgeschlagen: '+e.message); } }); }
+if(el.btnResync){ el.btnResync&& onSafe, async ()=>{ try{ await BLE.stopScan(); }catch{} try{ await BLE.startScan(); }catch(e){ showError('Resync fehlgeschlagen: '+e.message); } }); }
 
 if(el.btnStop){
-  el.btnStop.addEventListener('click', async ()=>{
+  el.btnStop&& onSafe, async ()=>{
     await BLE.stopScan();
     await releaseWakeLock();
     if(el.btnStart) el.btnStart.disabled = false; el.btnStop.disabled = true;
@@ -448,7 +455,7 @@ if(el.toggleCluster){
 }
 
 if(el.btnApplyFilters){
-  el.btnApplyFilters.addEventListener('click', ()=>{
+  el.btnApplyFilters&& onSafe, ()=>{
     appState.filters = {
       name: el.fName?.value.trim() || '',
       rssiMin: el.fRssiMin?.value !== '' ? Number(el.fRssiMin.value) : appState.filters.rssiMin,
@@ -462,7 +469,7 @@ if(el.btnApplyFilters){
 }
 
 if(el.btnClearFilters){
-  el.btnClearFilters.addEventListener('click', ()=>{
+  el.btnClearFilters&& onSafe, ()=>{
     if(el.fName) el.fName.value='';
     if(el.fRssiMin) el.fRssiMin.value='';
     if(el.fRssiMax) el.fRssiMax.value='';
@@ -475,10 +482,10 @@ if(el.btnClearFilters){
   });
 }
 
-if(el.btnExportJSON){ el.btnExportJSON.addEventListener('click', async ()=>{ const all = await DB.getAllRecords(); EXP.exportJSON(all); }); }
-if(el.btnExportCSV){ el.btnExportCSV.addEventListener('click', async ()=>{ const all = await DB.getAllRecords(); EXP.exportCSV(all); }); }
-if(el.btnExportCSVFiltered){ el.btnExportCSVFiltered.addEventListener('click', async ()=>{ const rows = await getFiltered(); EXP.exportCSV(rows, 'ble-scan_filtered'); }); }
-if(el.btnExportCSVCluster){ el.btnExportCSVCluster.addEventListener('click', async ()=>{ const rows = await getFiltered(); const clustered = CLU.cluster5s(rows, appState.pathLossN); EXP.exportCSV(clustered, 'ble-scan_cluster5s'); }); }
+if(el.btnExportJSON){ el.btnExportJSON&& onSafe, async ()=>{ const all = await DB.getAllRecords(); EXP.exportJSON(all); }); }
+if(el.btnExportCSV){ el.btnExportCSV&& onSafe, async ()=>{ const all = await DB.getAllRecords(); EXP.exportCSV(all); }); }
+if(el.btnExportCSVFiltered){ el.btnExportCSVFiltered&& onSafe, async ()=>{ const rows = await getFiltered(); EXP.exportCSV(rows, 'ble-scan_filtered'); }); }
+if(el.btnExportCSVCluster){ el.btnExportCSVCluster&& onSafe, async ()=>{ const rows = await getFiltered(); const clustered = CLU.cluster5s(rows, appState.pathLossN); EXP.exportCSV(clustered, 'ble-scan_cluster5s'); }); }
 
 // Preflight & boot
 async function preflight(){
