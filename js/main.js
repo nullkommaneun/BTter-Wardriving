@@ -1,191 +1,48 @@
-import * as BLE from './ble.js';
-import * as GEO from './geo.js';
+// main.js — v1.5.6 (Analyzer-only, no map)
+// Robust build: no optional-chaining on assignment, guarded event wiring, clean preflight & watchdog.
+// Modules expected: storage.js (DB), ble.js (BLE), filters.js (F), cluster.js (CLU), export.js (EXP),
+// profiler.js (PROF), session.js (SESSION), geo.js (GEO)
+
 import * as DB from './storage.js';
-import * as FIL from './filters.js';
-import * as EXP from './export.js';
+import * as BLE from './ble.js';
+import * as F from './filters.js';
 import * as CLU from './cluster.js';
-import * as PRO from './profiler.js';
-import * as SES from './session.js';
-import * as DEC from './parse.js';
+import * as EXP from './export.js';
+import * as PROF from './profiler.js';
+import * as SESSION from './session.js';
+import * as GEO from './geo.js';
 
-// Diagnostics
-const errBanner = document.getElementById('errorBanner');
-window.addEventListener('error', (e)=>{ console.error('Uncaught', e.error || e.message); if(errBanner){ errBanner.style.display='block'; errBanner.textContent = 'Fehler: '+(e.message||'unbekannt'); } });
-window.addEventListener('unhandledrejection', (e)=>{ console.error('Unhandled rejection', e.reason); if(errBanner){ errBanner.style.display='block'; errBanner.textContent = 'Fehler: '+(e.reason?.message||'Promise abgelehnt'); } });
-
-async function diagnostics(){
-  const pf = [];
-  const add = (name, ok, info='') => pf.push({name, ok, info});
-  add('SecureContext (HTTPS)', window.isSecureContext === true, location.protocol);
-  const ua = navigator.userAgent;
-  add('Browser', true, ua);
-  add('navigator.bluetooth', !!navigator.bluetooth);
-  add('requestLEScan', !!(navigator.bluetooth && navigator.bluetooth.requestLEScan));
-  add('Geolocation', !!navigator.geolocation);
-  add('WakeLock', !!(navigator.wakeLock && navigator.wakeLock.request));
-  try{
-    const perms = navigator.permissions;
-    if(perms && perms.query){
-      try{ const g = await perms.query({name:'geolocation'}); add('Perm: Geolocation', g.state !== 'denied', g.state); }catch{}
-      try{ const n = await perms.query({name:'notifications'}); add('Perm: Notifications', n.state !== 'denied', n.state); }catch{}
-    }
-  }catch{}
-  const el = document.getElementById('pfList');
-  if(el){
-    el.innerHTML = '<ul>' + pf.map(p=>`<li>${p.ok?'✅':'❌'} <b>${p.name}</b> <small class="muted">${p.info||''}</small></li>`).join('') + '</ul>';
-  }
-  return pf;
-}
-
-// App state
-const appState = {
-  driveMode: false,
-  cluster: true,
-  packetCount: 0,
-  uniqueSet: new Set(),
-  rateBuffer: [],
-  lastTick: 0,
-  preflightOk: false,
-  filters: { name:'', rssiMin:-80, rssiMax:null, from:null, to:null },
-  wakeLock: null,
-  pathLossN: 2.0,
-  lastPacketIso: null,
-  lastMapUpdate: 0,
-  rssiEma: new Map(),
-  lastAdvTs: Date.now(),
-};
-
-// Elements
+// ---------- Utilities ----------
 const el = {
+  // top status / controls
   status: document.getElementById('status'),
-  modeBadge: document.getElementById('modeBadge'),
-  unique: document.getElementById('uniqueCount'),
-  packets: document.getElementById('packetCount'),
-  rate: document.getElementById('ratePerMin'),
-  lastPkt: document.getElementById('lastPkt'),
-  dots: document.getElementById('dots'),
-  ticker: document.getElementById('driveTicker'),
-  tblBody: document.getElementById('tblBody'),
-  hiddenHint: document.getElementById('hiddenHint'),
   btnPreflight: document.getElementById('btnPreflight'),
   btnStart: document.getElementById('btnStart'),
-  btnStop: document.getElementById('btnStop'),
   btnResync: document.getElementById('btnResync'),
-  hb: document.getElementById('hb'),
-  swToggle: document.getElementById('toggleSW'),
-  toggleDrive: document.getElementById('toggleDrive'),
-  toggleCluster: document.getElementById('toggleCluster'),
+  btnStop: document.getElementById('btnStop'),
+  // filters
   fName: document.getElementById('fName'),
   fRssiMin: document.getElementById('fRssiMin'),
   fRssiMax: document.getElementById('fRssiMax'),
   fFrom: document.getElementById('fFrom'),
   fTo: document.getElementById('fTo'),
+  fApple: document.getElementById('fApple'),
+  fFastPair: document.getElementById('fFastPair'),
+  fIndustrie: document.getElementById('fIndustrie'),
   btnApplyFilters: document.getElementById('btnApplyFilters'),
   btnClearFilters: document.getElementById('btnClearFilters'),
-  btnExportJSON: document.getElementById('btnExportJSON'),
-  btnExportCSV: document.getElementById('btnExportCSV'),
-  btnExportCSVFiltered: document.getElementById('btnExportCSVFiltered'),
-  btnExportCSVCluster: document.getElementById('btnExportCSVCluster'),
-  pathLossN: document.getElementById('pathLossN'),
-};
-
-// Helpers
-function onSafe(el, ev, fn, opts){ if(el && el.addEventListener){ el.addEventListener(ev, fn, opts); } }
-
-// Helpers
-const nowIso = () => new Date().toISOString();
-const clampRateWindowMs = 60_000;
-function resetRate() { appState.rateBuffer.length = 0; appState.lastTick = performance.now(); }
-function pushRate(tsMs){
-  appState.rateBuffer.push(tsMs);
-  const cutoff = tsMs - clampRateWindowMs;
-  while(appState.rateBuffer.length && appState.rateBuffer[0] < cutoff){ appState.rateBuffer.shift(); }
-}
-function getRate(){ return appState.rateBuffer.length; }
-function deviceKey(name, uuids){
-  const n = (name || '∅').trim().toLowerCase();
-  const u = (uuids && uuids[0]) ? uuids[0] : '∅';
-  return n + '|' + u;
-}
-function updateStats(){
-  el.unique.textContent = String(appState.uniqueSet.size);
-  el.packets.textContent = String(appState.packetCount);
-  el.rate.textContent = String(getRate());
-  el.lastPkt.textContent = appState.lastPacketIso ? new Date(appState.lastPacketIso).toLocaleTimeString() : '–';
-}
-function showError(msg){ const e = document.getElementById('err'); if(!e) return; e.textContent = msg||''; e.classList.toggle('hidden', !msg); }
-
-
-function estDistance(rssi, txPower, n){
-  if(!Number.isFinite(rssi)) return null;
-  const ref = Number.isFinite(txPower) ? txPower : -59;
-  const N = Number.isFinite(n) ? Math.max(1.0, Math.min(4.0, n)) : 2.0;
-  const d = Math.pow(10, (ref - rssi) / (10 * N));
-  const clamped = Math.max(0.1, Math.min(50, d));
-  return Number.isFinite(clamped) ? Number(clamped.toFixed(2)) : null;
-}
-function ema(prev, x, alpha=0.3){
-  if(!Number.isFinite(x)) return prev ?? null;
-  if(!Number.isFinite(prev)) return x;
-  return (1-alpha)*prev + alpha*x;
-}
-
-// Rendering
-function renderTable(records){
-  const maxRows = 5;
-  el.tblBody.innerHTML = '';
-  const toShow = records.slice(-maxRows).reverse();
-  for(const r of toShow){
-    const tr = document.createElement('tr');
-    const icon = r.icon || '📡';
-    tr.innerHTML = `
-      <td>${new Date(r.timestamp).toLocaleTimeString()}</td>
-      <td>${icon} ${r.deviceName ?? ''}</td>
-      <td>${(r.serviceUUIDs||[]).join(';')}</td>
-      <td>${r.rssi ?? ''}</td>
-      <td>${r.txPower ?? ''}</td>
-      <td>${r.distanceM ?? ''}</td>
-      <td>${r.latitude ?? ''}</td>
-      <td>${r.longitude ?? ''}</td>
-      <td>${r.count ?? ''}</td>`;
-    el.tblBody.appendChild(tr);
-  }
-  const hidden = Math.max(0, records.length - maxRows);
-  el.hiddenHint.textContent = hidden > 0 ? `… ${hidden} weitere verborgen` : '';
-}
-
-async function getFiltered(){
-  const all = await DB.getAllRecords();
-  let rows = all;
-  rows = FIL.applyFilters(rows, appState.filters);
-  return rows;
-}
-
-function updateMapThrottled(rows){
-  const now = Date.now();
-  if(!appState.driveMode){
-    /* map removed call */ appState.lastMapUpdate = now; return;
-  }
-  if(now - appState.lastMapUpdate > 3000){
-    /* map removed call */ appState.lastMapUpdate = now;
-  }
-}
-
-async function refreshUI(){
-  const rows = await getFiltered();
-  const clustered = appState.cluster ? CLU.cluster5s(rows, appState.pathLossN) : rows;
-  renderTable(clustered);
-  devicesIndex = summarizeDevices(clustered);
-  renderDevList();
-  
-}
-
-
-// ==== Geräte-Analyse ====
-const devEl = {
-  list: document.getElementById('devList'),
-  search: document.getElementById('devSearch'),
-  count: document.getElementById('devCount'),
+  // counters
+  unique: document.getElementById('cntUnique'),
+  packets: document.getElementById('cntPackets'),
+  rate: document.getElementById('cntRate'),
+  heartbeat: document.getElementById('heartbeat'),
+  // table (optional in analyzer mode, still rendered if present)
+  tableBody: document.getElementById('tableBody'),
+  moreHint: document.getElementById('tableMoreHint'),
+  // analyzer
+  devList: document.getElementById('devList'),
+  devSearch: document.getElementById('devSearch'),
+  devCount: document.getElementById('devCount'),
   anaWrap: document.getElementById('analysis'),
   anaEmpty: document.getElementById('analysisEmpty'),
   anaIcon: document.getElementById('anaIcon'),
@@ -199,21 +56,79 @@ const devEl = {
   anaDistStats: document.getElementById('anaDistStats'),
   anaRawKeys: document.getElementById('anaRawKeys'),
   anaRaw: document.getElementById('anaRaw'),
-  spark: document.getElementById('anaSpark'),
+  anaSpark: document.getElementById('anaSpark'),
   btnExportJSONOne: document.getElementById('btnExportJSONOne'),
   btnExportCSVOne: document.getElementById('btnExportCSVOne'),
   btnFilterOnly: document.getElementById('btnFilterOnly'),
+  // error banner
+  errorBanner: document.getElementById('errorBanner')
 };
 
-let devicesIndex = new Map();
-let selectedKey = null;
+function showError(msg){
+  console.error(msg);
+  if (el.errorBanner){
+    el.errorBanner.style.display = 'block';
+    el.errorBanner.textContent = 'Fehler: ' + msg;
+  }
+  if (el.status){
+    el.status.textContent = 'Fehler: ' + msg;
+  }
+}
 
-function keyOf(rec){
-  const n = (rec.deviceName || '∅').trim().toLowerCase();
-  const u = (rec.serviceUUIDs && rec.serviceUUIDs[0]) ? rec.serviceUUIDs[0] : '∅';
+window.addEventListener('error', (e)=> showError(e.message || 'Uncaught error'));
+window.addEventListener('unhandledrejection', (e)=> showError(e.reason?.message || 'Promise rejected'));
+
+function onSafe(node, ev, fn, opts){
+  if (node && node.addEventListener) node.addEventListener(ev, fn, opts);
+}
+
+function deviceKey(name, uuids){
+  const n = (name || '∅').trim().toLowerCase();
+  const u = (Array.isArray(uuids) && uuids[0]) ? uuids[0] : '∅';
   return n + '|' + u;
 }
 
+function keyOf(rec){ return deviceKey(rec.deviceName, rec.serviceUUIDs); }
+
+function mean(arr){ if(!arr.length) return null; return arr.reduce((a,b)=>a+b,0)/arr.length; }
+function median(arr){ if(!arr.length) return null; const a=arr.slice().sort((x,y)=>x-y); const m=Math.floor(a.length/2); return (a.length%2? a[m] : (a[m-1]+a[m])/2); }
+
+function sanitize(s){ return (s||'').replace(/[^a-z0-9-_]+/gi,'_').slice(0,60); }
+
+// Path loss → distance
+function estDistance(rssi, txPower, n){
+  if(!Number.isFinite(rssi)) return null;
+  const ref = Number.isFinite(txPower) ? txPower : -59;
+  const N = Number.isFinite(n) ? Math.max(1.0, Math.min(4.0, n)) : 2.0;
+  const d = Math.pow(10, (ref - rssi) / (10 * N));
+  const clamped = Math.max(0.1, Math.min(50, d));
+  return Number.isFinite(clamped) ? Number(clamped.toFixed(2)) : null;
+}
+
+// EMA smoothing (optional)
+function ema(prev, x, alpha=0.3){
+  if(!Number.isFinite(x)) return prev ?? null;
+  if(!Number.isFinite(prev)) return x;
+  return prev + alpha * (x - prev);
+}
+
+// ---------- App State ----------
+const appState = {
+  preflightOk: false,
+  scanning: false,
+  lastAdvTs: 0,
+  pathLossN: 2.0,
+  sessionId: null,
+  rssiEma: new Map(),
+  filters: { name:'', rssiMin:-80, rssiMax:null, from:null, to:null, apple:false, fastpair:false, industrie:false },
+  watchdogTimer: null,
+  heartbeatTimer: null
+};
+
+let selectedKey = null;
+let devicesIndex = new Map();
+
+// ---------- Analyzer helpers ----------
 function summarizeDevices(rows){
   const map = new Map();
   for(const r of rows){
@@ -239,88 +154,15 @@ function summarizeDevices(rows){
     if(entry.first > r.timestamp) entry.first = r.timestamp;
     if(Number.isFinite(r.rssi)) entry.rssiVals.push(r.rssi);
     if(Number.isFinite(r.distanceM)) entry.distVals.push(r.distanceM);
-    (r.serviceUUIDs||[]).forEach(u=> entry.uuids.add(u));
+    (r.serviceUUIDs||[]).forEach(u => entry.uuids.add(u));
     entry.lastRaw = { manufacturerData: r.manufacturerData || {}, serviceData: r.serviceData || {} };
     entry.samples.push({ ts: r.timestamp, rssi: r.rssi, dist: r.distanceM });
   }
   return map;
 }
 
-function median(arr){ if(!arr.length) return null; const a=arr.slice().sort((x,y)=>x-y); const m=Math.floor(a.length/2); return a.length%2? a[m] : (a[m-1]+a[m])/2; }
-function mean(arr){ if(!arr.length) return null; return arr.reduce((a,b)=>a+b,0)/arr.length; }
-
-function renderDevList(){
-  const filterText = (devEl.search?.value || '').toLowerCase();
-  const items = Array.from(devicesIndex.values()).filter(it=>{
-    if(!filterText) return true;
-    const uu = Array.from(it.uuids).join(';').toLowerCase();
-    return (it.name||'').toLowerCase().includes(filterText) || uu.includes(filterText);
-  }).sort((a,b)=> b.count - a.count);
-  devEl.list.innerHTML = '';
-  for(const it of items){
-    const li = document.createElement('li');
-    li.innerHTML = `<div class="name"><span>${it.icon}</span><span>${it.name}</span></div><div class="meta"><span class="count">${it.count}</span> • ${(it.category||'')}</div>`;
-    li&& onSafe, ()=> selectDevice(it.key);
-    devEl.list.appendChild(li);
-  }
-  devEl.count.textContent = `${items.length} Geräte`;
-}
-
-function selectDevice(key){
-  selectedKey = key;
-  const it = devicesIndex.get(key);
-  if(!it) return;
-  devEl.anaEmpty?.classList.add('hidden');
-  devEl.anaWrap?.classList.remove('hidden');
-  devEl.anaIcon.textContent = it.icon || '📡';
-  devEl.anaName.textContent = it.name || '(ohne Name)';
-  devEl.anaCat.textContent = it.category || '–';
-  devEl.anaVendor.textContent = it.vendor || '–';
-  devEl.anaPackets.textContent = String(it.count);
-  devEl.anaFirst.textContent = new Date(it.first).toLocaleString();
-  devEl.anaLast.textContent = new Date(it.last).toLocaleString();
-  const rssiAvg = mean(it.rssiVals); const rssiMed = median(it.rssiVals);
-  devEl.anaRssiStats.textContent = (rssiAvg!==null? Math.round(rssiAvg):'–') + ' / ' + (rssiMed!==null? Math.round(rssiMed):'–') + ' dBm';
-  const distAvg = mean(it.distVals); const distMed = median(it.distVals);
-  devEl.anaDistStats.textContent = (distAvg!==null? distAvg.toFixed(1):'–') + ' / ' + (distMed!==null? distMed.toFixed(1):'–') + ' m';
-  const mKeys = Object.keys(it.lastRaw.manufacturerData||{}).join(', ') || '–';
-  const sKeys = Object.keys(it.lastRaw.serviceData||{}).join(', ') || '–';
-  devEl.anaRawKeys.textContent = `Hersteller: ${mKeys} • Services: ${sKeys}`;
-  devEl.anaRaw.textContent = JSON.stringify(it.lastRaw, null, 2);
-  drawSpark(it.samples);
-
-  if(devEl.btnExportJSONOne) devEl.btnExportJSONOne.addEventListener('click', async ()=>{
-    const rows = await DB.getAllRecords();
-    const filtered = rows.filter(r => keyOf(r) === key);
-    const ts = new Date().toISOString().replace(/:/g,'-');
-    const blob = new Blob([JSON.stringify(filtered, null, 2)], { type:'application/json' });
-    const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = `device_${sanitize(it.name)}_${ts}.json`; a.click();
-  };
-  if(devEl.btnExportCSVOne) devEl.btnExportCSVOne.addEventListener('click', async ()=>{
-    const rows = await DB.getAllRecords();
-    const filtered = rows.filter(r => keyOf(r) === key);
-    const header = ['timestamp','deviceName','serviceUUIDs','rssi','txPower','distanceM','latitude','longitude','sessionId','category','vendor','icon'];
-    const lines = [header.join(',')];
-    for(const r of filtered){
-      const uu = (r.serviceUUIDs||[]).join(';');
-      const vals = [r.timestamp, r.deviceName||'', uu, r.rssi??'', r.txPower??'', r.distanceM??'', r.latitude??'', r.longitude??'', r.sessionId||'', r.category||'', r.vendor||'', r.icon||''];
-      lines.push(vals.map(v => String(v).replace(/"/g,'""')).map(v=>`"${v}"`).join(','));
-    }
-    const ts = new Date().toISOString().replace(/:/g,'-');
-    const blob = new Blob([lines.join('\n')], { type:'text/csv' });
-    const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = `device_${sanitize(it.name)}_${ts}.csv`; a.click();
-  };
-  if(devEl.btnFilterOnly) devEl.btnFilterOnly.addEventListener('click', ()=>{
-    if(el.fName) el.fName.value = it.name || '';
-    appState.filters.name = it.name || '';
-    refreshUI();
-  };
-}
-
-function sanitize(s){ return (s||'').replace(/[^a-z0-9-_]+/gi,'_').slice(0,60); }
-
 function drawSpark(samples){
-  const c = devEl.spark;
+  const c = el.anaSpark;
   if(!c) return;
   const ctx = c.getContext('2d');
   ctx.clearRect(0,0,c.width,c.height);
@@ -331,10 +173,9 @@ function drawSpark(samples){
   const ys = arr.map(x=> (Number.isFinite(x.rssi)? x.rssi : -100));
   const minX = Math.min(...xs), maxX = Math.max(...xs);
   const minY = Math.min(...ys), maxY = Math.max(...ys);
-  const pad = 8;
-  const w = c.width, h = c.height;
-  function xmap(v){ return pad + (w-2*pad) * ( (v-minX) / Math.max(1, maxX-minX) ); }
-  function ymap(v){ return pad + (h-2*pad) * ( ( (v - maxY) / Math.max(1, maxY-minY) ) ); }
+  const pad = 8, w = c.width, h = c.height;
+  const xmap = v => pad + (w-2*pad) * ( (v-minX) / Math.max(1, maxX-minX) );
+  const ymap = v => pad + (h-2*pad) * ( ( (v - maxY) / Math.max(1, maxY-minY) ) );
   ctx.lineWidth = 1.5;
   ctx.beginPath();
   arr.forEach((p,i)=>{
@@ -346,187 +187,266 @@ function drawSpark(samples){
   ctx.stroke();
 }
 
-// Ingest
-async function ingest(evt){
-  const position = await GEO.sample(appState.driveMode);
-  const sessionId = SES.currentSessionId();
-  const base = {
-    timestamp: nowIso(),
-    deviceName: evt.deviceName ?? null,
-    serviceUUIDs: Array.isArray(evt.serviceUUIDs) ? evt.serviceUUIDs : [],
-    rssi: Number.isInteger(evt.rssi) ? evt.rssi : null,
-    txPower: (Number.isInteger(evt.txPower) && evt.txPower > -100 && evt.txPower < 30) ? evt.txPower : null,
-    latitude: position?.coords ? position.coords.latitude : null,
-    longitude: position?.coords ? position.coords.longitude : null,
-    sessionId,
-    category: '', vendor: '', icon: '',
-    manufacturerData: DEC.mfgToObject(evt.manufacturerData),
-    serviceData: DEC.svcToObject(evt.serviceData),
-    ...DEC.decode(evt.manufacturerData, evt.serviceData)
-  };
-  base.distanceM = estDistance(base.rssi, base.txPower, appState.pathLossN);
-  const key = deviceKey(base.deviceName, base.serviceUUIDs);
-  const prev = appState.rssiEma.get(key);
-  const sm = ema(prev, base.rssi);
-  if(Number.isFinite(sm)) appState.rssiEma.set(key, sm);
-  let prof = PRO.profileDevice(base.deviceName, base.serviceUUIDs);
-  let record = { ...base, ...prof, rssiSmoothed: Number.isFinite(sm)? Math.round(sm): null };
-  const fb = PRO.fallbackProfileByDecoded(record);
-  record = { ...record, ...fb };
+function renderDevList(){
+  if(!el.devList) return;
+  const filterText = (el.devSearch?.value || '').toLowerCase();
+  const items = Array.from(devicesIndex.values()).filter(it=>{
+    if(!filterText) return true;
+    const uu = Array.from(it.uuids).join(';').toLowerCase();
+    return (it.name||'').toLowerCase().includes(filterText) || uu.includes(filterText);
+  }).sort((a,b)=> b.count - a.count);
+  el.devList.innerHTML = '';
+  for(const it of items){
+    const li = document.createElement('li');
+    li.innerHTML = `<div class="name"><span>${it.icon}</span><span>${it.name}</span></div><div class="meta"><span class="count">${it.count}</span> • ${(it.category||'')}</div>`;
+    li.addEventListener('click', ()=> selectDevice(it.key));
+    el.devList.appendChild(li);
+  }
+  if(el.devCount) el.devCount.textContent = `${items.length} Geräte`;
+}
 
-  if(record.timestamp && Array.isArray(record.serviceUUIDs) && Number.isInteger(record.rssi)) {
-    await DB.addRecord(record);
-    appState.packetCount++;
-    appState.uniqueSet.add(deviceKey(record.deviceName, record.serviceUUIDs));
-    pushRate(Date.now());
-    appState.lastPacketIso = record.timestamp;
-    updateStats();
+function selectDevice(key){
+  selectedKey = key;
+  const it = devicesIndex.get(key);
+  if(!it) return;
+  if(el.anaEmpty) el.anaEmpty.classList.add('hidden');
+  if(el.anaWrap) el.anaWrap.classList.remove('hidden');
+  if(el.anaIcon) el.anaIcon.textContent = it.icon || '📡';
+  if(el.anaName) el.anaName.textContent = it.name || '(ohne Name)';
+  if(el.anaCat) el.anaCat.textContent = it.category || '–';
+  if(el.anaVendor) el.anaVendor.textContent = it.vendor || '–';
+  if(el.anaPackets) el.anaPackets.textContent = String(it.count);
+  if(el.anaFirst) el.anaFirst.textContent = new Date(it.first).toLocaleString();
+  if(el.anaLast) el.anaLast.textContent = new Date(it.last).toLocaleString();
+  const rssiAvg = mean(it.rssiVals), rssiMed = median(it.rssiVals);
+  if(el.anaRssiStats) el.anaRssiStats.textContent = (rssiAvg!==null? Math.round(rssiAvg):'–') + ' / ' + (rssiMed!==null? Math.round(rssiMed):'–') + ' dBm';
+  const distAvg = mean(it.distVals), distMed = median(it.distVals);
+  if(el.anaDistStats) el.anaDistStats.textContent = (distAvg!==null? distAvg.toFixed(1):'–') + ' / ' + (distMed!==null? distMed.toFixed(1):'–') + ' m';
+  const mKeys = Object.keys(it.lastRaw.manufacturerData||{}).join(', ') || '–';
+  const sKeys = Object.keys(it.lastRaw.serviceData||{}).join(', ') || '–';
+  if(el.anaRawKeys) el.anaRawKeys.textContent = `Hersteller: ${mKeys} • Services: ${sKeys}`;
+  if(el.anaRaw) el.anaRaw.textContent = JSON.stringify(it.lastRaw, null, 2);
+  drawSpark(it.samples);
+}
+
+// ---------- Rendering ----------
+async function renderTable(rows){
+  if(!el.tableBody) return; // analyzer build may not show table
+  const maxRows = 5;
+  el.tableBody.innerHTML = '';
+  const visible = rows.slice(0, maxRows);
+  for(const r of visible){
+    const tr = document.createElement('tr');
+    tr.innerHTML = `
+      <td>${new Date(r.timestamp).toLocaleString()}</td>
+      <td>${(r.icon||'')} ${(r.deviceName||'')}</td>
+      <td>${(r.serviceUUIDs||[]).join(';')}</td>
+      <td>${r.rssi ?? ''}</td>
+      <td>${r.latitude ?? ''}</td>
+      <td>${r.longitude ?? ''}</td>
+      <td>${r.distanceM ?? ''}</td>
+    `;
+    el.tableBody.appendChild(tr);
+  }
+  if(el.moreHint){
+    const hidden = Math.max(0, rows.length - visible.length);
+    el.moreHint.textContent = hidden > 0 ? `… ${hidden} weitere verborgen` : '';
   }
 }
 
-BLE.onAdvertisement(async (ad) => {
+async function refreshUI(){
+  const rows = await DB.getFiltered();
+  const clustered = CLU.clusterByTime(rows, 5, appState.pathLossN);
+  devicesIndex = summarizeDevices(clustered);
+  renderDevList();
+  renderTable(clustered);
+
+  // counters
+  const all = await DB.getAllRecords();
+  const uniq = new Set(all.map(r => deviceKey(r.deviceName, r.serviceUUIDs)));
+  if(el.unique) el.unique.textContent = String(uniq.size);
+  if(el.packets) el.packets.textContent = String(all.length);
+}
+
+// ---------- Preflight / Watchdog / Heartbeat ----------
+async function preflight(){
+  // quick feature probe text, if present
+  const probe = [];
+  function add(name, ok){ probe.push(`${name}:${ok?'OK':'NEIN'}`); }
+  add('requestLEScan', !!(navigator.bluetooth && navigator.bluetooth.requestLEScan));
+  add('Geolocation', !!navigator.geolocation);
+  add('WakeLock', !!(navigator.wakeLock && navigator.wakeLock.request));
+  if(el.status) el.status.textContent = 'Preflight: ' + probe.join(' | ');
+  appState.preflightOk = !!(navigator.bluetooth && navigator.bluetooth.requestLEScan);
+  return appState.preflightOk;
+}
+
+function getRate(){
+  // simple rate estimator based on DB timestamps (last 60s)
+  // fallback: packets/min since last minute
+  return DB.countLastSeconds ? DB.countLastSeconds(60) : 0;
+}
+
+function startHeartbeat(){
+  stopHeartbeat();
+  appState.heartbeatTimer = setInterval(()=>{
+    const silentMs = Date.now() - appState.lastAdvTs;
+    if(el.heartbeat){
+      el.heartbeat.textContent = `letztes Paket vor ${Math.floor(silentMs/1000)} s • Rate/min: ${String(getRate())}`;
+    }
+    // Tier 1: quick restart (12s drive / 20s normal)
+    const thr = 12000; // keep simple
+    if(appState.preflightOk && silentMs > thr){
+      BLE.stopScan().catch(()=>{});
+      setTimeout(()=> BLE.startScan().catch(()=>{}), 200);
+      appState.lastAdvTs = Date.now();
+    }
+    // Tier 2: hard resync after 60s inactivity
+    if(appState.preflightOk && silentMs > 60000){
+      (async ()=>{
+        try{ await DB.flushNow?.(); }catch(_){}
+        try{ await BLE.stopScan(); }catch(_){}
+        await new Promise(r=>setTimeout(r,300));
+        try{ await BLE.startScan(); if(el.status) el.status.textContent = 'Auto-Resync nach Inaktivität…'; }catch(_){}
+        appState.lastAdvTs = Date.now();
+      })();
+    }
+  }, 1000);
+}
+function stopHeartbeat(){ if(appState.heartbeatTimer){ clearInterval(appState.heartbeatTimer); appState.heartbeatTimer = null; } }
+
+// ---------- Ingest ----------
+async function handleRecord(record){
+  // shape/validate & enrich
+  const base = { ...record };
+  base.distanceM = estDistance(base.rssi, base.txPower, appState.pathLossN);
+  const prof = PROF.classify ? PROF.classify(base) : {};
+  base.category = base.category || prof.category || '';
+  base.vendor   = base.vendor   || prof.vendor   || '';
+  base.icon     = base.icon     || prof.icon     || '';
+
+  // validate mandatory fields fallback
+  if(!base.timestamp) base.timestamp = new Date().toISOString();
+  if(!Array.isArray(base.serviceUUIDs)) base.serviceUUIDs = [];
+  if(!Number.isInteger(base.rssi)) base.rssi = Math.round(Number(base.rssi)||0);
+
+  await DB.putRecord(base);
   appState.lastAdvTs = Date.now();
-  try{ await ingest(ad); } catch(e){ console.error('Ingest failed', e); }
+}
+
+BLE.onAdvertisement(async (adv) => {
+  try{
+    await handleRecord(adv);
+    await refreshUI();
+  }catch(e){ showError('Ingest-Fehler: ' + e.message); }
 });
 
-// UI Events
-if(el.btnPreflight){ onSafe(el.btnPreflight,'click', async ()=>{
-  try{ await preflight(); if(el.status) el.status.textContent = 'Preflight OK'; }
-  catch(e){ showError('Preflight fehlgeschlagen: '+e.message); }
-}); }
+// ---------- UI Events ----------
+onSafe(el.btnPreflight, 'click', async ()=>{
+  try{
+    const ok = await preflight();
+    if(el.status) el.status.textContent = ok ? 'Preflight OK' : 'Preflight: fehlend';
+  }catch(e){ showError('Preflight fehlgeschlagen: ' + e.message); }
+});
 
+onSafe(el.btnStart, 'click', async ()=>{
+  try{
+    if(!appState.preflightOk){ const ok = await preflight(); if(!ok) throw new Error('Browser unterstützt requestLEScan nicht'); }
+    await GEO.start?.({ mode:'drive' });
+    await SESSION.ensure();
+    appState.sessionId = SESSION.current();
+    await BLE.startScan();
+    appState.scanning = true;
+    if(el.status) el.status.textContent = 'Scan läuft…';
+    startHeartbeat();
+  }catch(e){ showError('Start fehlgeschlagen: ' + e.message); }
+});
 
-if(el.btnResync){ onSafe(el.btnResync,'click', async ()=>{
+onSafe(el.btnResync, 'click', async ()=>{
   try{
     await BLE.stopScan();
     await new Promise(r=>setTimeout(r,200));
     await BLE.startScan();
     if(el.status) el.status.textContent = 'Resync durchgeführt';
-  }catch(e){ showError('Resync fehlgeschlagen: '+e.message); }
-}); }
+  }catch(e){ showError('Resync fehlgeschlagen: ' + e.message); }
+});
 
-if(el.btnStop){ onSafe(el.btnStop,'click', async ()=>{
-  try{ await BLE.stopScan(); if(el.status) el.status.textContent = 'Scan gestoppt';
-  }catch(e){ showError('Stop fehlgeschlagen: '+e.message); }
-}); }
+onSafe(el.btnStop, 'click', async ()=>{
+  try{
+    await BLE.stopScan();
+    appState.scanning = false;
+    stopHeartbeat();
+    if(el.status) el.status.textContent = 'Scan gestoppt';
+  }catch(e){ showError('Stop fehlgeschlagen: ' + e.message); }
+});
 
-if(el.btnApplyFilters){ onSafe(el.btnApplyFilters,'click', ()=>{
+onSafe(el.btnApplyFilters, 'click', ()=>{
   appState.filters = {
     name: el.fName?.value || '',
     rssiMin: Number(el.fRssiMin?.value) || -120,
     rssiMax: el.fRssiMax?.value ? Number(el.fRssiMax.value) : null,
     from: el.fFrom?.value || null,
     to: el.fTo?.value || null,
-    apple: !!el.fApple?.checked,
-    fastpair: !!el.fFastPair?.checked,
-    industrie: !!el.fIndustrie?.checked
+    apple: !!(el.fApple && el.fApple.checked),
+    fastpair: !!(el.fFastPair && el.fFastPair.checked),
+    industrie: !!(el.fIndustrie && el.fIndustrie.checked)
   };
   refreshUI();
-}); }
+});
 
-if(el.btnClearFilters){ onSafe(el.btnClearFilters,'click', ()=>{
+onSafe(el.btnClearFilters, 'click', ()=>{
   if(el.fName) el.fName.value = '';
   if(el.fApple) el.fApple.checked = false;
   if(el.fFastPair) el.fFastPair.checked = false;
   if(el.fIndustrie) el.fIndustrie.checked = false;
   appState.filters = { name:'', rssiMin:-80, rssiMax:null, from:null, to:null, apple:false, fastpair:false, industrie:false };
   refreshUI();
-}); }
-
-if(el.btnExportJSON){ onSafe(el.btnExportJSON,'click', async ()=>{ const all = await DB.getAllRecords(); EXP.exportJSON(all); }); }
-if(el.btnExportCSV){ onSafe(el.btnExportCSV,'click', async ()=>{ const all = await DB.getAllRecords(); EXP.exportCSV(all); }); }
-if(el.btnExportCSVFiltered){ onSafe(el.btnExportCSVFiltered,'click', async ()=>{ const rows = await DB.getFiltered(); EXP.exportCSV(rows, 'ble-scan_filtered'); }); }
-if(el.btnExportCSVCluster){ onSafe(el.btnExportCSVCluster,'click', async ()=>{ const rows = await DB.getFiltered(); const clustered = CLU.clusterByTime(rows, 5, appState.pathLossN); EXP.exportCSV(clustered, 'ble-scan_cluster5s'); }); }
-
-// Preflight & boot
-async function preflight(){
-  const hasBLE = !!(navigator.bluetooth && navigator.bluetooth.requestLEScan);
-  const hasGeo = !!navigator.geolocation;
-  const hasWakeLock = !!(navigator.wakeLock && navigator.wakeLock.request);
-  appState.preflightOk = hasBLE && hasGeo;
-  document.title = `BLE Scan – ${hasBLE? 'BLE✓':'BLE×'} ${hasGeo? 'Geo✓':'Geo×'} ${hasWakeLock? 'WL✓':'WL×'}`;
-  if('serviceWorker' in navigator){
-    try{
-      if(el.swToggle?.checked){
-        await navigator.serviceWorker.register('./service-worker.js');
-      }else{
-        const regs = await navigator.serviceWorker.getRegistrations();
-        for(const r of regs){ await r.unregister(); }
-      }
-    }catch(e){ console.warn('SW reg fail', e); }
-  }
-  return appState.preflightOk;
-}
-
-// Ticker
-let dotPhase = 0;
-setInterval(()=>{
-  if(!appState.driveMode) return;
-  dotPhase = (dotPhase + 1) % 3;
-  if(el.dots) el.dots.textContent = '•'.repeat(dotPhase+1);
-  updateStats();
-  const s = Math.floor((Date.now() - appState.lastAdvTs)/1000);
-  if(el.hb) el.hb.textContent = s+'s seit letztem Paket';
-  refreshUI();
-}, 1000);
-
-
-// Watchdog: restart scan if no adverts for >20s
-setInterval(async ()=>{
-  const silentMs = Date.now() - appState.lastAdvTs;
-  const thr = appState.driveMode ? 12000 : 20000;
-  if(appState.preflightOk && silentMs > thr){
-    console.warn('Watchdog: keine Advertisements seit', silentMs, 'ms → Restart Scan');
-    try{ await BLE.stopScan(); }catch{}
-    try{ await BLE.startScan(); }catch(e){ console.warn('Restart failed', e); }
-    appState.lastAdvTs = Date.now();
-  }
-}, 5000);
-
-// Resubscribe when page becomes visible
-document.addEventListener('visibilitychange', async ()=>{
-  if(document.visibilityState === 'visible' && appState.preflightOk){
-    try{ await EXP; }catch{}
-    try{ await import('./storage.js').then(m=>m.flushNow && m.flushNow(); }catch{}
-    try{ await BLE.stopScan(); }catch{}
-    try{ await BLE.startScan(); }catch(e){ console.warn('Resubscribe failed', e); }
-  }
 });
 
+onSafe(el.devSearch, 'input', ()=> renderDevList());
 
-// WakeLock helpers
-async function requestWakeLock(){
-  try{
-    if('wakeLock' in navigator){
-      appState.wakeLock = await navigator.wakeLock.request('screen');
-      appState.wakeLock.addEventListener('release', ()=>{ console.log('WakeLock released'); });
-      document.addEventListener('visibilitychange', async ()=>{
-        if(document.visibilityState === 'visible' && appState.driveMode){
-          try{ appState.wakeLock = await navigator.wakeLock.request('screen'); }catch{}
-        }
-      });
-    }
-  }catch(e){ console.warn('WakeLock not granted', e); }
-}
-async function releaseWakeLock(){
-  try{ await appState.wakeLock?.release(); }catch{}
-  appState.wakeLock = null;
-}
+// Analyzer buttons (per device)
+onSafe(el.btnExportJSONOne, 'click', async ()=>{
+  const rows = await DB.getAllRecords();
+  const filtered = rows.filter(r => keyOf(r) === selectedKey);
+  const ts = new Date().toISOString().replace(/:/g,'-');
+  const it = devicesIndex.get(selectedKey);
+  const name = sanitize(it?.name || 'device');
+  const blob = new Blob([JSON.stringify(filtered, null, 2)], { type:'application/json' });
+  const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = `device_${name}_${ts}.json`; a.click();
+});
 
-// Boot
-(async function(){
-  try{
-    resetRate();
-    await diagnostics();
-    const ok = await preflight();
-    try{ /* map removed */ }catch(e){ console.error(e); showError('Karte konnte nicht initialisiert werden. Prüfe CSP/Netzwerk.'); }
-    await DB.init();
-    await GEO.init();
-    SES.init();
-    if(el.status) el.status.textContent = ok ? 'Bereit.' : 'Eingeschränkt, siehe Preflight.';
-    await refreshUI();
-  }catch(e){
-    console.error(e);
-    showError('Initialisierungsfehler: '+e.message);
+onSafe(el.btnExportCSVOne, 'click', async ()=>{
+  const rows = await DB.getAllRecords();
+  const filtered = rows.filter(r => keyOf(r) === selectedKey);
+  const header = ['timestamp','deviceName','serviceUUIDs','rssi','txPower','distanceM','latitude','longitude','sessionId','category','vendor','icon'];
+  const lines = [header.join(',')];
+  for(const r of filtered){
+    const uu = (r.serviceUUIDs||[]).join(';');
+    const vals = [r.timestamp, r.deviceName||'', uu, r.rssi??'', r.txPower??'', r.distanceM??'', r.latitude??'', r.longitude??'', r.sessionId||'', r.category||'', r.vendor||'', r.icon||''];
+    lines.push(vals.map(v => String(v).replace(/"/g,'""')).map(v=>`"${v}"`).join(','));
   }
-})();
+  const ts = new Date().toISOString().replace(/:/g,'-');
+  const it = devicesIndex.get(selectedKey);
+  const name = sanitize(it?.name || 'device');
+  const blob = new Blob([lines.join('\n')], { type:'text/csv' });
+  const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = `device_${name}_${ts}.csv`; a.click();
+});
+
+onSafe(el.btnFilterOnly, 'click', ()=>{
+  const it = devicesIndex.get(selectedKey);
+  const name = it?.name || '';
+  if(el.fName) el.fName.value = name;
+  appState.filters.name = name;
+  refreshUI();
+});
+
+// ---------- Boot ----------
+document.addEventListener('DOMContentLoaded', async ()=>{
+  try{
+    if(el.status) el.status.textContent = 'Bereit';
+    await DB.init?.();
+    await preflight();
+    await refreshUI();
+  }catch(e){ showError('Init-Fehler: ' + e.message); }
+});
